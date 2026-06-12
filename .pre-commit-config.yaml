@@ -1,0 +1,28 @@
+minimum_pre_commit_version: "3.5.0"
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: check-merge-conflict
+      - id: check-yaml
+        files: \.(yaml|yml)$
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: local
+    hooks:
+      - id: dart-format
+        name: dart format
+        entry: dart format
+        language: system
+        files: \.dart$
+
+      - id: flutter-analyze
+        name: flutter analyze
+        entry: flutter analyze
+        language: system
+        pass_filenames: false
+        files: ^(lib|test|integration_test)/.*\.dart$|^(pubspec|analysis_options)\.yaml$
