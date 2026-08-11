@@ -125,9 +125,33 @@ void main() {
     );
     expect(tester.widget<AnimatedOpacity>(trailingOpacity).opacity, 1);
     final child = controller.tree.childrenOf(root.id).single;
+    await tester.enterText(quickAdd, '安排发布窗口');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
     await controller.setCompleted(child.id, true);
     await tester.pumpAndSettle();
-    expect(controller.tree.isComplete(root.id), isTrue);
+
+    final completedTitle = find.descendant(
+      of: find.byType(NodeTile),
+      matching: find.text('确认最终文案'),
+    );
+    final nextTitle = find.descendant(
+      of: find.byType(NodeTile),
+      matching: find.text('安排发布窗口'),
+    );
+    expect(
+      tester.widget<Text>(completedTitle).style?.decoration,
+      TextDecoration.lineThrough,
+    );
+    expect(
+      tester.getCenter(completedTitle).dy,
+      lessThan(tester.getCenter(nextTitle).dy),
+    );
+    expect(find.byType(ExpansionTile), findsNothing);
+    expect(find.text('子任务'), findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
+    expect(controller.tree.isComplete(child.id), isTrue);
+    expect(controller.tree.isComplete(root.id), isFalse);
   });
 
   testWidgets('时间线切换和已完成开关可用', (tester) async {
@@ -137,6 +161,47 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(TodoApp(controller: controller));
     await tester.pumpAndSettle();
+
+    final switcherFinder = find.byType(SegmentedButton<AppView>);
+    final switcher = tester.widget<SegmentedButton<AppView>>(switcherFinder);
+    final switcherStyle = switcher.style!;
+    expect(find.byIcon(Icons.format_list_bulleted), findsOneWidget);
+    expect(
+      switcherStyle.minimumSize?.resolve(<WidgetState>{}),
+      const Size(0, 30),
+    );
+    expect(
+      switcherStyle.mouseCursor?.resolve(<WidgetState>{WidgetState.hovered}),
+      SystemMouseCursors.click,
+    );
+    expect(
+      switcherStyle.overlayColor?.resolve(<WidgetState>{WidgetState.hovered}),
+      Colors.transparent,
+    );
+    expect(
+      switcherStyle.backgroundColor?.resolve(<WidgetState>{
+        WidgetState.hovered,
+      }),
+      Colors.transparent,
+    );
+    expect(
+      switcherStyle.backgroundColor?.resolve(<WidgetState>{
+        WidgetState.selected,
+        WidgetState.hovered,
+      }),
+      Theme.of(tester.element(switcherFinder)).colorScheme.surface,
+    );
+    expect(
+      find.ancestor(
+        of: switcherFinder,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Padding &&
+              widget.padding == const EdgeInsets.fromLTRB(16, 18, 16, 22),
+        ),
+      ),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('时间线').first);
     await tester.pumpAndSettle();

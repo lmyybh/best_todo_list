@@ -19,15 +19,6 @@ class EventView extends StatelessWidget {
     if (node == null) return _EmptyEvents(controller: controller);
     final tree = controller.tree;
     final children = tree.childrenOf(node.id);
-    final unfinished = children
-        .where((child) => !tree.isComplete(child.id))
-        .toList();
-    final completed =
-        children.where((child) => tree.isComplete(child.id)).toList()..sort(
-          (a, b) => tree
-              .effectiveCompletedAt(b.id)!
-              .compareTo(tree.effectiveCompletedAt(a.id)!),
-        );
 
     return Column(
       children: <Widget>[
@@ -37,29 +28,27 @@ class EventView extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(42, 0, 42, 48),
             children: <Widget>[
               const SizedBox(height: 26),
-              _SectionHeader(label: '待完成', count: unfinished.length),
+              _SectionHeader(label: '子任务', count: children.length),
               const SizedBox(height: 10),
-              if (unfinished.isEmpty)
-                _InlineEmpty(
-                  message: children.isEmpty ? '把这件事拆成下一步行动' : '所有子任务都完成了',
-                )
+              if (children.isEmpty)
+                const _InlineEmpty(message: '把这件事拆成下一步行动')
               else
                 ReorderableListView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   buildDefaultDragHandles: false,
-                  itemCount: unfinished.length,
+                  itemCount: children.length,
                   onReorderItem: (oldIndex, newIndex) {
-                    final reordered = List<TodoNode>.of(unfinished);
+                    final reordered = List<TodoNode>.of(children);
                     final moved = reordered.removeAt(oldIndex);
                     reordered.insert(newIndex, moved);
-                    controller.reorderChildren(node.id, <String>[
-                      ...reordered.map((item) => item.id),
-                      ...completed.map((item) => item.id),
-                    ]);
+                    controller.reorderChildren(
+                      node.id,
+                      reordered.map((item) => item.id).toList(),
+                    );
                   },
                   itemBuilder: (context, index) {
-                    final child = unfinished[index];
+                    final child = children[index];
                     return Padding(
                       key: ValueKey<String>(child.id),
                       padding: const EdgeInsets.only(bottom: 7),
@@ -89,37 +78,6 @@ class EventView extends StatelessWidget {
                 ),
               const SizedBox(height: 2),
               _QuickAdd(controller: controller, parentId: node.id),
-              if (completed.isNotEmpty) ...<Widget>[
-                const SizedBox(height: 20),
-                ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  childrenPadding: EdgeInsets.zero,
-                  initiallyExpanded: false,
-                  title: Text(
-                    '已完成  ${completed.length}',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  children: <Widget>[
-                    for (final child in completed)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 7),
-                        child: Opacity(
-                          opacity: 0.68,
-                          child: NodeTile(
-                            node: child,
-                            tree: tree,
-                            onOpen: () => controller.select(child.id),
-                            onToggleComplete: (value) =>
-                                controller.setCompleted(child.id, value),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
             ],
           ),
         ),

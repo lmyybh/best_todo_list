@@ -27,7 +27,7 @@ class AppSidebar extends StatelessWidget {
         child: Column(
           children: <Widget>[
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 22),
               child: Container(
                 padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
@@ -38,7 +38,7 @@ class AppSidebar extends StatelessWidget {
                   segments: const <ButtonSegment<AppView>>[
                     ButtonSegment(
                       value: AppView.events,
-                      icon: Icon(Icons.account_tree_outlined, size: 15),
+                      icon: Icon(Icons.format_list_bulleted, size: 15),
                       label: Text('事件'),
                     ),
                     ButtonSegment(
@@ -52,12 +52,29 @@ class AppSidebar extends StatelessWidget {
                       controller.setView(selection.first),
                   showSelectedIcon: false,
                   style: ButtonStyle(
-                    minimumSize: const WidgetStatePropertyAll(Size(0, 32)),
+                    minimumSize: const WidgetStatePropertyAll(Size(0, 30)),
                     padding: const WidgetStatePropertyAll(
                       EdgeInsets.symmetric(horizontal: 10),
                     ),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     visualDensity: VisualDensity.compact,
+                    mouseCursor: const WidgetStatePropertyAll(
+                      SystemMouseCursors.click,
+                    ),
+                    overlayColor: WidgetStateProperty.resolveWith<Color?>((
+                      states,
+                    ) {
+                      if (states.contains(WidgetState.hovered)) {
+                        return Colors.transparent;
+                      }
+                      if (states.contains(WidgetState.focused) ||
+                          states.contains(WidgetState.pressed)) {
+                        return Theme.of(
+                          context,
+                        ).colorScheme.primary.withValues(alpha: 0.08);
+                      }
+                      return Colors.transparent;
+                    }),
                     side: const WidgetStatePropertyAll(BorderSide.none),
                     shape: WidgetStatePropertyAll(
                       RoundedRectangleBorder(
