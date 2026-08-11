@@ -5,6 +5,7 @@ import '../../app/app_theme.dart';
 import '../../domain/node_tree.dart';
 import '../../domain/todo_node.dart';
 import '../common/create_node_dialog.dart';
+import '../common/delete_confirmation_dialog.dart';
 import '../common/formatters.dart';
 import '../common/node_tile.dart';
 
@@ -673,19 +674,9 @@ Future<void> _deleteSelected(
 ) async {
   final confirmed = await showDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog.adaptive(
-      title: const Text('删除这个事件？'),
-      content: const Text('它的所有子任务也会一起删除。你可以在提示消失前撤销。'),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('删除'),
-        ),
-      ],
+    builder: (context) => const DeleteConfirmationDialog(
+      title: '删除这个事件？',
+      message: '它的所有子任务也会一起删除。你可以在提示消失前撤销。',
     ),
   );
   if (confirmed != true || !context.mounted) return;

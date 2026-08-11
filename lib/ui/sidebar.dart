@@ -7,6 +7,7 @@ import '../domain/timeline.dart';
 import '../domain/todo_node.dart';
 import 'adaptive/desktop_context_menu.dart';
 import 'common/create_node_dialog.dart';
+import 'common/delete_confirmation_dialog.dart';
 
 class AppSidebar extends StatelessWidget {
   const AppSidebar({required this.controller, this.width = 258, super.key});
@@ -399,7 +400,13 @@ Future<void> _renameTreeNode(
 ) async {
   final title = await showDialog<String>(
     context: context,
-    builder: (context) => _RenameNodeDialog(initialTitle: node.title),
+    builder: (context) => CreateNodeDialog(
+      title: '重命名',
+      initialTitle: node.title,
+      fieldLabel: '名称',
+      hintText: '输入新名称',
+      confirmLabel: '保存',
+    ),
   );
   if (title == null || title.trim().isEmpty || title.trim() == node.title) {
     return;
@@ -415,19 +422,9 @@ Future<void> _deleteTreeNode(
   final hasChildren = controller.tree.childrenOf(node.id).isNotEmpty;
   final confirmed = await showDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog.adaptive(
-      title: const Text('删除这个节点？'),
-      content: Text(hasChildren ? '它的所有子任务也会一起删除。' : '删除后可以在提示消失前撤销。'),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('删除'),
-        ),
-      ],
+    builder: (context) => DeleteConfirmationDialog(
+      title: '删除这个节点？',
+      message: hasChildren ? '它的所有子任务也会一起删除。' : '删除后可以在提示消失前撤销。',
     ),
   );
   if (confirmed != true || !context.mounted) return;
@@ -438,56 +435,6 @@ Future<void> _deleteTreeNode(
       content: const Text('节点已删除'),
       action: SnackBarAction(label: '撤销', onPressed: controller.undoDelete),
     ),
-  );
-}
-
-class _RenameNodeDialog extends StatefulWidget {
-  const _RenameNodeDialog({required this.initialTitle});
-
-  final String initialTitle;
-
-  @override
-  State<_RenameNodeDialog> createState() => _RenameNodeDialogState();
-}
-
-class _RenameNodeDialogState extends State<_RenameNodeDialog> {
-  late final TextEditingController _controller = TextEditingController(
-    text: widget.initialTitle,
-  );
-
-  @override
-  void initState() {
-    super.initState();
-    _controller.selection = TextSelection(
-      baseOffset: 0,
-      extentOffset: _controller.text.length,
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _save() => Navigator.pop(context, _controller.text);
-
-  @override
-  Widget build(BuildContext context) => AlertDialog.adaptive(
-    title: const Text('重命名'),
-    content: TextField(
-      controller: _controller,
-      autofocus: true,
-      decoration: const InputDecoration(labelText: '名称'),
-      onSubmitted: (_) => _save(),
-    ),
-    actions: <Widget>[
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('取消'),
-      ),
-      FilledButton(onPressed: _save, child: const Text('保存')),
-    ],
   );
 }
 

@@ -5,6 +5,7 @@ import 'package:best_todo_list/domain/node_tree.dart';
 import 'package:best_todo_list/domain/node_service.dart';
 import 'package:best_todo_list/domain/todo_node.dart';
 import 'package:best_todo_list/ui/common/create_node_dialog.dart';
+import 'package:best_todo_list/ui/common/delete_confirmation_dialog.dart';
 import 'package:best_todo_list/ui/common/node_tile.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
@@ -261,7 +262,19 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '删除'));
+    final deleteButton = find.byKey(
+      const ValueKey<String>('confirm-delete-button'),
+    );
+    expect(deleteButton, findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(deleteButton)
+          .style
+          ?.backgroundColor
+          ?.resolve(<WidgetState>{}),
+      AppColors.of(tester.element(deleteButton)).danger,
+    );
+    await tester.tap(deleteButton);
     await tester.pumpAndSettle();
     expect(controller.nodes, isEmpty);
   });
@@ -362,7 +375,102 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('输入事件名称'), findsOneWidget);
-      expect(tester.getSize(find.byType(TextField)).width, 360);
+      expect(tester.getSize(find.byType(TextField)).width, 320);
+      expect(
+        (tester.widget<AlertDialog>(find.byType(AlertDialog)).shape
+                as RoundedRectangleBorder)
+            .borderRadius,
+        BorderRadius.circular(12),
+      );
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('macOS 重命名复用桌面 Material 标题表单', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showDialog<String>(
+                context: context,
+                builder: (context) => const CreateNodeDialog(
+                  title: '重命名',
+                  initialTitle: '旧名称',
+                  fieldLabel: '名称',
+                  hintText: '输入新名称',
+                  confirmLabel: '保存',
+                ),
+              ),
+              child: const Text('打开'),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('打开'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CupertinoAlertDialog), findsNothing);
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('保存'), findsOneWidget);
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.controller?.text, '旧名称');
+      expect(
+        field.controller?.selection,
+        const TextSelection(baseOffset: 0, extentOffset: 3),
+      );
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('macOS 删除确认使用桌面 Material 危险操作弹窗', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showDialog<bool>(
+                context: context,
+                builder: (context) => const DeleteConfirmationDialog(
+                  title: '删除这个节点？',
+                  message: '它的所有子任务也会一起删除。',
+                ),
+              ),
+              child: const Text('打开'),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('打开'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CupertinoAlertDialog), findsNothing);
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(
+        (tester.widget<AlertDialog>(find.byType(AlertDialog)).shape
+                as RoundedRectangleBorder)
+            .borderRadius,
+        BorderRadius.circular(12),
+      );
+      final deleteButton = find.byKey(
+        const ValueKey<String>('confirm-delete-button'),
+      );
+      expect(
+        tester
+            .widget<FilledButton>(deleteButton)
+            .style
+            ?.backgroundColor
+            ?.resolve(<WidgetState>{}),
+        AppColors.of(tester.element(deleteButton)).danger,
+      );
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }

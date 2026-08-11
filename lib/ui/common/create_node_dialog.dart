@@ -1,16 +1,40 @@
 import 'package:flutter/material.dart';
 
 class CreateNodeDialog extends StatefulWidget {
-  const CreateNodeDialog({this.title = '新建事件', super.key});
+  const CreateNodeDialog({
+    this.title = '新建事件',
+    this.initialTitle = '',
+    this.fieldLabel = '标题',
+    this.hintText = '输入事件名称',
+    this.confirmLabel = '创建',
+    super.key,
+  });
 
   final String title;
+  final String initialTitle;
+  final String fieldLabel;
+  final String hintText;
+  final String confirmLabel;
 
   @override
   State<CreateNodeDialog> createState() => _CreateNodeDialogState();
 }
 
 class _CreateNodeDialogState extends State<CreateNodeDialog> {
-  final TextEditingController _controller = TextEditingController();
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initialTitle,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (_controller.text.isNotEmpty) {
+      _controller.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _controller.text.length,
+      );
+    }
+  }
 
   void _submit() => Navigator.pop(context, _controller.text);
 
@@ -22,13 +46,25 @@ class _CreateNodeDialogState extends State<CreateNodeDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.title),
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    surfaceTintColor: Colors.transparent,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+    contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+    actionsPadding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+    title: Text(
+      widget.title,
+      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+    ),
     content: SizedBox(
-      width: 360,
+      width: 320,
       child: TextField(
         controller: _controller,
         autofocus: true,
-        decoration: const InputDecoration(labelText: '标题', hintText: '输入事件名称'),
+        decoration: InputDecoration(
+          labelText: widget.fieldLabel,
+          hintText: widget.hintText,
+        ),
         textInputAction: TextInputAction.done,
         onSubmitted: (_) => _submit(),
       ),
@@ -38,7 +74,11 @@ class _CreateNodeDialogState extends State<CreateNodeDialog> {
         onPressed: () => Navigator.pop(context),
         child: const Text('取消'),
       ),
-      FilledButton(onPressed: _submit, child: const Text('创建')),
+      FilledButton(
+        key: const ValueKey<String>('node-title-confirm-button'),
+        onPressed: _submit,
+        child: Text(widget.confirmLabel),
+      ),
     ],
   );
 }
