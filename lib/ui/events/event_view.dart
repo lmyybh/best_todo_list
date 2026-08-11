@@ -409,7 +409,11 @@ class _QuickAddState extends State<_QuickAdd> {
 
   Future<void> _submit(String value) async {
     if (value.trim().isEmpty) return;
-    await widget.controller.create(parentId: widget.parentId, title: value);
+    await widget.controller.create(
+      parentId: widget.parentId,
+      title: value,
+      selectCreated: false,
+    );
     if (mounted) _controller.clear();
   }
 

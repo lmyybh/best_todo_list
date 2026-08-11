@@ -91,6 +91,7 @@ class AppController extends ChangeNotifier {
     String? parentId,
     required String title,
     DateTime? deadline,
+    bool selectCreated = true,
   }) => _write(() async {
     final node = await service.createNode(
       parentId: parentId,
@@ -98,7 +99,7 @@ class AppController extends ChangeNotifier {
       deadline: deadline,
     );
     if (parentId != null) expandedIds.add(parentId);
-    _selectedId = node.id;
+    if (selectCreated) _selectedId = node.id;
     return node;
   });
 

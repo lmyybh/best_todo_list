@@ -55,7 +55,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('确认最终文案'), findsWidgets);
-    final child = controller.tree.childrenOf(root!.id).single;
+    expect(controller.selectedId, root!.id);
+    final child = controller.tree.childrenOf(root.id).single;
     await controller.setCompleted(child.id, true);
     await tester.pumpAndSettle();
     expect(controller.tree.isComplete(root.id), isTrue);
