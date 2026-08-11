@@ -11,12 +11,14 @@ void main() {
     final directory = await Directory.systemTemp.createTemp('best_todo_test_');
     final path = p.join(directory.path, 'test.sqlite');
     final created = DateTime.utc(2026, 8, 11, 8, 30);
+    final completed = DateTime.utc(2026, 8, 11, 9, 15);
     final node = TodoNode(
       id: 'node-1',
       title: '持久化任务',
       deadline: DateTime.utc(2026, 8, 12, 10),
       createdAt: created,
       updatedAt: created,
+      completedAt: completed,
       manualOrder: 1000,
     );
 
@@ -30,6 +32,8 @@ void main() {
     final restored = (await repository.loadNodes()).single;
     expect(restored.title, node.title);
     expect(restored.deadline, node.deadline);
+    expect(restored.createdAt, created);
+    expect(restored.completedAt, completed);
 
     final deletedAt = DateTime.utc(2026, 8, 11, 9);
     await repository.updateNode(

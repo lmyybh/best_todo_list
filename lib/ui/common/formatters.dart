@@ -9,6 +9,11 @@ String formatTime(DateTime value) {
   return '${_two(local.hour)}:${_two(local.minute)}';
 }
 
+String formatDate(DateTime value) {
+  final local = value.toLocal();
+  return '${local.year}/${_two(local.month)}/${_two(local.day)}';
+}
+
 bool isOverdue(DateTime? deadline, DateTime now) =>
     deadline != null &&
     deadline.toLocal().isBefore(now) &&

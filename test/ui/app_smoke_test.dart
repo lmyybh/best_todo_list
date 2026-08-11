@@ -78,6 +78,14 @@ void main() {
 
     expect(find.text('确认最终文案'), findsWidgets);
     expect(controller.selectedId, root!.id);
+    final child = controller.tree.childrenOf(root.id).single;
+    expect(
+      find.descendant(
+        of: find.byType(NodeTile),
+        matching: find.textContaining('创建时间'),
+      ),
+      findsNothing,
+    );
     final tileSurface = find.descendant(
       of: find.byType(NodeTile),
       matching: find.byWidgetPredicate((widget) {
@@ -106,8 +114,12 @@ void main() {
       matching: find.text('确认最终文案'),
     );
     expect(title, findsOneWidget);
+    final tileContent = find.byKey(
+      ValueKey<String>('node-tile-content-${child.id}'),
+    );
     expect(
-      (tester.getCenter(title).dy - tester.getCenter(tileSurface).dy).abs(),
+      (tester.getCenter(tileContent).dy - tester.getCenter(tileSurface).dy)
+          .abs(),
       lessThanOrEqualTo(1),
     );
     final trailingOpacity = find.descendant(
@@ -125,7 +137,6 @@ void main() {
       AppColors.of(tester.element(tileSurface)).surfaceHover,
     );
     expect(tester.widget<AnimatedOpacity>(trailingOpacity).opacity, 1);
-    final child = controller.tree.childrenOf(root.id).single;
     await tester.enterText(quickAdd, '安排发布窗口');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
@@ -145,6 +156,13 @@ void main() {
       TextDecoration.lineThrough,
     );
     expect(
+      find.descendant(
+        of: find.byType(NodeTile),
+        matching: find.textContaining('完成时间'),
+      ),
+      findsNothing,
+    );
+    expect(
       tester.getCenter(completedTitle).dy,
       lessThan(tester.getCenter(nextTitle).dy),
     );
@@ -153,6 +171,37 @@ void main() {
     expect(find.text('2'), findsOneWidget);
     expect(controller.tree.isComplete(child.id), isTrue);
     expect(controller.tree.isComplete(root.id), isFalse);
+    expect(
+      find.byKey(const ValueKey<String>('detail-completion-toggle')),
+      findsNothing,
+    );
+
+    await tester.tap(completedTitle);
+    await tester.pumpAndSettle();
+    expect(find.text('创建时间 2026/08/11'), findsOneWidget);
+    expect(find.text('完成时间 2026/08/11'), findsOneWidget);
+    final detailToggle = find.byKey(
+      const ValueKey<String>('detail-completion-toggle'),
+    );
+    expect(detailToggle, findsOneWidget);
+    expect(
+      find.descendant(of: detailToggle, matching: find.text('已完成')),
+      findsOneWidget,
+    );
+
+    await tester.tap(detailToggle);
+    await tester.pumpAndSettle();
+    expect(controller.tree.isComplete(child.id), isFalse);
+    expect(find.text('完成时间 2026/08/11'), findsNothing);
+    expect(
+      find.descendant(of: detailToggle, matching: find.text('标记完成')),
+      findsOneWidget,
+    );
+
+    await tester.tap(detailToggle);
+    await tester.pumpAndSettle();
+    expect(controller.tree.isComplete(child.id), isTrue);
+    expect(find.text('完成时间 2026/08/11'), findsOneWidget);
   });
 
   testWidgets('时间线切换和已完成开关可用', (tester) async {
@@ -314,9 +363,11 @@ void main() {
       await tester.pumpAndSettle();
 
       final tile = find.byType(NodeTile);
-      final title = find.text('阅读 v4');
+      final tileContent = find.byKey(
+        const ValueKey<String>('node-tile-content-reading-v4'),
+      );
       expect(
-        (tester.getCenter(title).dy - tester.getCenter(tile).dy).abs(),
+        (tester.getCenter(tileContent).dy - tester.getCenter(tile).dy).abs(),
         lessThanOrEqualTo(1),
       );
     } finally {

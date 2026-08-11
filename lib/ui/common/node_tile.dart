@@ -110,6 +110,9 @@ class _NodeTileState extends State<NodeTile> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
+                            key: ValueKey<String>(
+                              'node-tile-content-${node.id}',
+                            ),
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: <Widget>[

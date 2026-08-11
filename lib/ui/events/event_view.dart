@@ -101,10 +101,13 @@ class _EventHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
+    final isLeaf = tree.isLeaf(node.id);
+    final complete = tree.isComplete(node.id);
     final leaves = tree.leafDescendantsOf(node.id);
     final completedCount = leaves
         .where((leaf) => leaf.completedAt != null)
         .length;
+    final completedAt = tree.effectiveCompletedAt(node.id);
     final path = tree.pathFor(node.id);
     return Padding(
       padding: const EdgeInsets.fromLTRB(42, 32, 42, 18),
@@ -130,7 +133,7 @@ class _EventHeader extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          '事件',
+                          isLeaf ? '任务' : '事件',
                           style: TextStyle(
                             color: colors.muted,
                             fontSize: 12,
@@ -151,9 +154,59 @@ class _EventHeader extends StatelessWidget {
                       <String>['所有事件', ...path].join('  /  '),
                       style: TextStyle(color: colors.faint, fontSize: 12),
                     ),
+                    const SizedBox(height: 9),
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 6,
+                      children: <Widget>[
+                        _LifecycleDate(
+                          icon: Icons.schedule_outlined,
+                          label: '创建时间',
+                          value: formatDate(node.createdAt),
+                        ),
+                        if (completedAt != null)
+                          _LifecycleDate(
+                            icon: Icons.check_circle_outline,
+                            label: '完成时间',
+                            value: formatDate(completedAt),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
               ),
+              if (isLeaf) ...<Widget>[
+                OutlinedButton.icon(
+                  key: const ValueKey<String>('detail-completion-toggle'),
+                  onPressed: () => controller.setCompleted(node.id, !complete),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: complete
+                        ? Theme.of(context).colorScheme.primary
+                        : colors.muted,
+                    backgroundColor: complete
+                        ? colors.accentSoft
+                        : Colors.transparent,
+                    side: BorderSide(
+                      color: complete
+                          ? Theme.of(context).colorScheme.primary
+                          : colors.border,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 9,
+                    ),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  icon: Icon(
+                    complete
+                        ? Icons.check_circle
+                        : Icons.radio_button_unchecked,
+                    size: 16,
+                  ),
+                  label: Text(complete ? '已完成' : '标记完成'),
+                ),
+                const SizedBox(width: 8),
+              ],
               PopupMenuButton<String>(
                 tooltip: '更多操作',
                 icon: Icon(Icons.more_horiz, size: 19, color: colors.muted),
@@ -314,6 +367,31 @@ class _EventHeader extends StatelessWidget {
                 child.deadline != null &&
                 child.deadline!.isAfter(parent.deadline!),
           );
+}
+
+class _LifecycleDate extends StatelessWidget {
+  const _LifecycleDate({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = AppColors.of(context).muted;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Icon(icon, size: 13, color: color),
+        const SizedBox(width: 5),
+        Text('$label $value', style: TextStyle(color: color, fontSize: 11)),
+      ],
+    );
+  }
 }
 
 class _EditableTitle extends StatefulWidget {

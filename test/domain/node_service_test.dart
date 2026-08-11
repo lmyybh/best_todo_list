@@ -36,6 +36,7 @@ void main() {
 
     final tree = NodeTree(await service.loadNodes());
     expect(root.title, '根事件');
+    expect(root.createdAt, now);
     expect(tree.childrenOf(root.id).map((node) => node.id), <String>[
       first.id,
       second.id,
@@ -46,11 +47,16 @@ void main() {
 
   test('叶子完成和取消完成写入正确状态', () async {
     final task = await service.createNode(title: '任务');
+    final createdAt = task.createdAt;
     await service.setLeafCompleted(task.id, true);
-    expect((await service.loadNodes()).single.completedAt, now);
+    var saved = (await service.loadNodes()).single;
+    expect(saved.createdAt, createdAt);
+    expect(saved.completedAt, now);
 
     await service.setLeafCompleted(task.id, false);
-    expect((await service.loadNodes()).single.completedAt, isNull);
+    saved = (await service.loadNodes()).single;
+    expect(saved.createdAt, createdAt);
+    expect(saved.completedAt, isNull);
   });
 
   test('事件完成状态取所有叶子最晚完成时间', () async {
