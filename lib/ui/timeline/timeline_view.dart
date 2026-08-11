@@ -80,7 +80,7 @@ class TimelineView extends StatelessWidget {
                 label: '显示已完成任务',
                 child: Row(
                   children: <Widget>[
-                    Switch(
+                    Switch.adaptive(
                       value: controller.showCompleted,
                       onChanged: controller.setShowCompleted,
                     ),

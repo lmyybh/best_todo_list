@@ -1,7 +1,12 @@
 import 'package:best_todo_list/app/app.dart';
 import 'package:best_todo_list/app/app_controller.dart';
+import 'package:best_todo_list/app/app_theme.dart';
+import 'package:best_todo_list/domain/node_tree.dart';
 import 'package:best_todo_list/domain/node_service.dart';
+import 'package:best_todo_list/domain/todo_node.dart';
 import 'package:best_todo_list/ui/common/node_tile.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -31,6 +36,7 @@ void main() {
     await tester.pumpWidget(TodoApp(controller: controller));
     await tester.pumpAndSettle();
 
+    expect(find.text('todo'), findsOneWidget);
     expect(find.text('从一件想完成的事开始'), findsOneWidget);
     await tester.tap(find.widgetWithText(FilledButton, '新建事件'));
     await tester.pumpAndSettle();
@@ -57,6 +63,38 @@ void main() {
 
     expect(find.text('确认最终文案'), findsWidgets);
     expect(controller.selectedId, root!.id);
+    final tileSurface = find.descendant(
+      of: find.byType(NodeTile),
+      matching: find.byWidgetPredicate((widget) {
+        if (widget is! Material || widget.shape is! RoundedRectangleBorder) {
+          return false;
+        }
+        final shape = widget.shape! as RoundedRectangleBorder;
+        return shape.borderRadius == BorderRadius.circular(10);
+      }),
+    );
+    expect(tileSurface, findsOneWidget);
+    final material = tester.widget<Material>(tileSurface);
+    expect(
+      material.color,
+      Theme.of(tester.element(tileSurface)).colorScheme.surface,
+    );
+    expect(material.clipBehavior, Clip.antiAlias);
+    final tileInk = find.descendant(
+      of: tileSurface,
+      matching: find.byType(InkWell),
+    );
+    expect(tileInk, findsOneWidget);
+    expect(tester.getSize(tileInk).width, tester.getSize(tileSurface).width);
+    final title = find.descendant(
+      of: tileSurface,
+      matching: find.text('确认最终文案'),
+    );
+    expect(title, findsOneWidget);
+    expect(
+      (tester.getCenter(title).dy - tester.getCenter(tileSurface).dy).abs(),
+      lessThanOrEqualTo(1),
+    );
     final child = controller.tree.childrenOf(root.id).single;
     await controller.setCompleted(child.id, true);
     await tester.pumpAndSettle();
@@ -98,5 +136,84 @@ void main() {
       title.style?.color,
       Theme.of(tester.element(titleFinder)).colorScheme.onSurface,
     );
+  });
+
+  testWidgets('左侧节点右键菜单只提供重命名和删除', (tester) async {
+    final node = await controller.create(title: '旧名称');
+    await tester.binding.setSurfaceSize(const Size(1100, 760));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(TodoApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    final treeItem = find.widgetWithText(ListTile, '旧名称');
+    await tester.tap(treeItem, buttons: kSecondaryMouseButton);
+    await tester.pumpAndSettle();
+    expect(controller.selectedId, node!.id);
+    expect(find.text('重命名'), findsOneWidget);
+    expect(find.text('删除'), findsOneWidget);
+    expect(find.byType(MenuItemButton), findsNWidgets(2));
+
+    await tester.tap(find.text('重命名'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '新名称');
+    await tester.tap(find.widgetWithText(FilledButton, '保存'));
+    await tester.pumpAndSettle();
+    expect(controller.nodes.single.title, '新名称');
+
+    await tester.tap(
+      find.widgetWithText(ListTile, '新名称'),
+      buttons: kSecondaryMouseButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '删除'));
+    await tester.pumpAndSettle();
+    expect(controller.nodes, isEmpty);
+  });
+
+  testWidgets('macOS 叶子任务内容在卡片内垂直居中', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      final now = DateTime.utc(2026, 8, 11, 9);
+      final node = TodoNode(
+        id: 'reading-v4',
+        parentId: 'sglang',
+        title: '阅读 v4',
+        createdAt: now,
+        updatedAt: now,
+        manualOrder: 0,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 700,
+                child: NodeTile(
+                  node: node,
+                  tree: NodeTree(<TodoNode>[node]),
+                  onOpen: () {},
+                  onToggleComplete: (_) {},
+                  trailing: const Icon(Icons.drag_indicator),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final tile = find.byType(NodeTile);
+      final title = find.text('阅读 v4');
+      expect(
+        (tester.getCenter(title).dy - tester.getCenter(tile).dy).abs(),
+        lessThanOrEqualTo(1),
+      );
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 }

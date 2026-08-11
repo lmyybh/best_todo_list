@@ -33,6 +33,8 @@ class NodeTile extends StatelessWidget {
         .where((leaf) => leaf.completedAt != null)
         .length;
     final overdue = isOverdue(node.deadline, DateTime.now()) && !complete;
+    final hasMetadata =
+        node.deadline != null || isEvent || (path?.isNotEmpty ?? false);
     final surfaceColor = isEvent
         ? Color.alphaBlend(
             colors.accentSoft.withValues(alpha: 0.45),
@@ -43,20 +45,21 @@ class NodeTile extends StatelessWidget {
     return Semantics(
       button: true,
       label: isEvent ? '事件：${node.title}' : '任务：${node.title}',
-      child: Container(
+      child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 62),
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: colors.border),
-        ),
-        child: Stack(
-          children: <Widget>[
-            Material(
-              color: surfaceColor,
-              child: InkWell(
-                onTap: onOpen,
-                child: Padding(
+        child: Material(
+          color: surfaceColor,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: BorderSide(color: colors.border),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onOpen,
+            child: Stack(
+              fit: StackFit.passthrough,
+              children: <Widget>[
+                Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 14,
                     vertical: 10,
@@ -72,7 +75,7 @@ class NodeTile extends StatelessWidget {
                       else
                         Semantics(
                           label: complete ? '取消完成' : '标记完成',
-                          child: Checkbox(
+                          child: Checkbox.adaptive(
                             value: complete,
                             onChanged: (value) =>
                                 onToggleComplete(value ?? false),
@@ -101,44 +104,46 @@ class NodeTile extends StatelessWidget {
                                     : Theme.of(context).colorScheme.onSurface,
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Wrap(
-                              spacing: 10,
-                              runSpacing: 3,
-                              children: <Widget>[
-                                if (node.deadline != null)
-                                  Text(
-                                    formatDeadline(node.deadline),
-                                    style: TextStyle(
-                                      color: overdue
-                                          ? colors.danger
-                                          : Theme.of(
-                                              context,
-                                            ).colorScheme.primary,
-                                      fontSize: 11,
-                                      fontWeight: overdue
-                                          ? FontWeight.w600
-                                          : FontWeight.normal,
+                            if (hasMetadata) ...<Widget>[
+                              const SizedBox(height: 4),
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 3,
+                                children: <Widget>[
+                                  if (node.deadline != null)
+                                    Text(
+                                      formatDeadline(node.deadline),
+                                      style: TextStyle(
+                                        color: overdue
+                                            ? colors.danger
+                                            : Theme.of(
+                                                context,
+                                              ).colorScheme.primary,
+                                        fontSize: 11,
+                                        fontWeight: overdue
+                                            ? FontWeight.w600
+                                            : FontWeight.normal,
+                                      ),
                                     ),
-                                  ),
-                                if (isEvent)
-                                  Text(
-                                    '$completedCount / ${leaves.length} 已完成',
-                                    style: TextStyle(
-                                      color: colors.muted,
-                                      fontSize: 11,
+                                  if (isEvent)
+                                    Text(
+                                      '$completedCount / ${leaves.length} 已完成',
+                                      style: TextStyle(
+                                        color: colors.muted,
+                                        fontSize: 11,
+                                      ),
                                     ),
-                                  ),
-                                if (path != null && path!.isNotEmpty)
-                                  Text(
-                                    path!,
-                                    style: TextStyle(
-                                      color: colors.muted,
-                                      fontSize: 11,
+                                  if (path != null && path!.isNotEmpty)
+                                    Text(
+                                      path!,
+                                      style: TextStyle(
+                                        color: colors.muted,
+                                        fontSize: 11,
+                                      ),
                                     ),
-                                  ),
-                              ],
-                            ),
+                                ],
+                              ),
+                            ],
                             if (isEvent) ...<Widget>[
                               const SizedBox(height: 7),
                               ClipRRect(
@@ -166,17 +171,17 @@ class NodeTile extends StatelessWidget {
                     ],
                   ),
                 ),
-              ),
+                if (overdue)
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 3,
+                    child: ColoredBox(color: colors.danger),
+                  ),
+              ],
             ),
-            if (overdue)
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: 3,
-                child: ColoredBox(color: colors.danger),
-              ),
-          ],
+          ),
         ),
       ),
     );

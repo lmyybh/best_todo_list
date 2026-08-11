@@ -1,4 +1,4 @@
-# 枝序 HTML UI 原型
+# todo HTML UI 原型
 
 直接用浏览器打开 `index.html` 即可体验。
 

@@ -259,7 +259,7 @@ class _EventHeader extends StatelessWidget {
                           child: Stack(
                             fit: StackFit.expand,
                             children: <Widget>[
-                              CircularProgressIndicator(
+                              CircularProgressIndicator.adaptive(
                                 value: leaves.isEmpty
                                     ? 0
                                     : completedCount / leaves.length,
@@ -580,7 +580,7 @@ Future<void> _deleteSelected(
 ) async {
   final confirmed = await showDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => AlertDialog.adaptive(
       title: const Text('删除这个事件？'),
       content: const Text('它的所有子任务也会一起删除。你可以在提示消失前撤销。'),
       actions: <Widget>[

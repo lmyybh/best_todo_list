@@ -5,18 +5,20 @@ import '../app/app_theme.dart';
 import '../domain/node_tree.dart';
 import '../domain/timeline.dart';
 import '../domain/todo_node.dart';
+import 'adaptive/desktop_context_menu.dart';
 import 'common/create_node_dialog.dart';
 
 class AppSidebar extends StatelessWidget {
-  const AppSidebar({required this.controller, super.key});
+  const AppSidebar({required this.controller, this.width = 258, super.key});
 
   final AppController controller;
+  final double width;
 
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     return Container(
-      width: 258,
+      width: width,
       decoration: BoxDecoration(
         border: Border(right: BorderSide(color: colors.border)),
       ),
@@ -58,7 +60,7 @@ class AppSidebar extends StatelessWidget {
                 children: <Widget>[
                   const Expanded(
                     child: Text(
-                      '枝序',
+                      'todo',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -179,6 +181,7 @@ class _TreeNode extends StatelessWidget {
     final hasChildren = children.isNotEmpty;
     final expanded = controller.expandedIds.contains(node.id);
     final selected = controller.selectedId == node.id;
+    final colors = AppColors.of(context);
     final tile = DragTarget<String>(
       onWillAcceptWithDetails: (details) => details.data != node.id,
       onAcceptWithDetails: (details) =>
@@ -237,19 +240,45 @@ class _TreeNode extends StatelessWidget {
 
     return Column(
       children: <Widget>[
-        Draggable<String>(
-          data: node.id,
-          rootOverlay: true,
-          feedback: Material(
-            elevation: 8,
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-              child: Text(node.title),
+        DesktopContextMenu(
+          onOpen: () => controller.select(node.id),
+          menuChildren: <Widget>[
+            MenuItemButton(
+              leadingIcon: const Icon(Icons.edit_outlined, size: 18),
+              onPressed: () => _renameTreeNode(context, controller, node),
+              child: const Text('重命名'),
             ),
+            const Divider(height: 1),
+            MenuItemButton(
+              leadingIcon: Icon(
+                Icons.delete_outline,
+                size: 18,
+                color: colors.danger,
+              ),
+              style: ButtonStyle(
+                foregroundColor: WidgetStatePropertyAll(colors.danger),
+              ),
+              onPressed: () => _deleteTreeNode(context, controller, node),
+              child: const Text('删除'),
+            ),
+          ],
+          child: Draggable<String>(
+            data: node.id,
+            rootOverlay: true,
+            feedback: Material(
+              elevation: 8,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 9,
+                ),
+                child: Text(node.title),
+              ),
+            ),
+            childWhenDragging: Opacity(opacity: 0.4, child: tile),
+            child: tile,
           ),
-          childWhenDragging: Opacity(opacity: 0.4, child: tile),
-          child: tile,
         ),
         if (expanded)
           for (final child in children)
@@ -262,6 +291,105 @@ class _TreeNode extends StatelessWidget {
       ],
     );
   }
+}
+
+Future<void> _renameTreeNode(
+  BuildContext context,
+  AppController controller,
+  TodoNode node,
+) async {
+  final title = await showDialog<String>(
+    context: context,
+    builder: (context) => _RenameNodeDialog(initialTitle: node.title),
+  );
+  if (title == null || title.trim().isEmpty || title.trim() == node.title) {
+    return;
+  }
+  await controller.updateTitle(node.id, title);
+}
+
+Future<void> _deleteTreeNode(
+  BuildContext context,
+  AppController controller,
+  TodoNode node,
+) async {
+  final hasChildren = controller.tree.childrenOf(node.id).isNotEmpty;
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog.adaptive(
+      title: const Text('删除这个节点？'),
+      content: Text(hasChildren ? '它的所有子任务也会一起删除。' : '删除后可以在提示消失前撤销。'),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('删除'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) return;
+  await controller.delete(node.id);
+  if (!context.mounted || controller.error != null) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: const Text('节点已删除'),
+      action: SnackBarAction(label: '撤销', onPressed: controller.undoDelete),
+    ),
+  );
+}
+
+class _RenameNodeDialog extends StatefulWidget {
+  const _RenameNodeDialog({required this.initialTitle});
+
+  final String initialTitle;
+
+  @override
+  State<_RenameNodeDialog> createState() => _RenameNodeDialogState();
+}
+
+class _RenameNodeDialogState extends State<_RenameNodeDialog> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initialTitle,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: _controller.text.length,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _save() => Navigator.pop(context, _controller.text);
+
+  @override
+  Widget build(BuildContext context) => AlertDialog.adaptive(
+    title: const Text('重命名'),
+    content: TextField(
+      controller: _controller,
+      autofocus: true,
+      decoration: const InputDecoration(labelText: '名称'),
+      onSubmitted: (_) => _save(),
+    ),
+    actions: <Widget>[
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('取消'),
+      ),
+      FilledButton(onPressed: _save, child: const Text('保存')),
+    ],
+  );
 }
 
 class _TimelineNavigation extends StatelessWidget {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_controller.dart';
 import '../app/app_theme.dart';
+import 'adaptive/desktop_app_shell.dart';
 import 'events/event_view.dart';
 import 'sidebar.dart';
 import 'timeline/timeline_view.dart';
@@ -14,7 +15,9 @@ class HomeShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (controller.loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator.adaptive()),
+      );
     }
 
     return Scaffold(
@@ -35,15 +38,12 @@ class HomeShell extends StatelessWidget {
               ],
             ),
           Expanded(
-            child: Row(
-              children: <Widget>[
-                AppSidebar(controller: controller),
-                Expanded(
-                  child: controller.view == AppView.events
-                      ? EventView(controller: controller)
-                      : TimelineView(controller: controller),
-                ),
-              ],
+            child: DesktopAppShell(
+              sidebarBuilder: (context, width) =>
+                  AppSidebar(controller: controller, width: width),
+              body: controller.view == AppView.events
+                  ? EventView(controller: controller)
+                  : TimelineView(controller: controller),
             ),
           ),
         ],

@@ -1,6 +1,8 @@
-# 枝序
+# todo
 
 一款使用 Flutter 构建的 macOS 本地事件树 Todo 应用。节点没有固定的“事件”或“任务”类型：有子节点时是事件，没有子节点时就是可完成的任务。
+
+界面基于 Material 3 和 Flutter 官方自适应控件，使用桌面响应式双栏外壳。当前只维护 macOS 运行目标；组件边界为后续 Windows、Linux 桌面适配保留扩展点，暂不考虑手机端。
 
 ## v1 功能
 
@@ -41,7 +43,7 @@ lib/
   app/       应用控制器、主题和入口
   data/      SQLite 数据库与 Repository
   domain/    Node 模型、事件树规则和时间线查询
-  ui/        事件视图、时间线和公共组件
+  ui/        事件视图、时间线、桌面自适应层和公共组件
 ```
 
 产品规则见 [docs/target.md](docs/target.md)，执行计划见 [docs/v1-development-plan.md](docs/v1-development-plan.md)，HTML 视觉原型位于 [prototype/index.html](prototype/index.html)。

@@ -4,7 +4,7 @@
 
 ## 当前基线
 
-- Flutter macOS v1 已完成，应用名称为“枝序”。
+- Flutter macOS v1 已完成，应用名称为“todo”。
 - 数据层使用 `sqflite_common_ffi`，应用状态使用 Flutter `ChangeNotifier`。
 - HTML 原型已经确认整体方向，覆盖事件树、事件详情、时间线、完成状态和深浅色主题。
 - 原型中的示例数据和交互只用于视觉验收；实际业务规则以 `target.md` 为准。

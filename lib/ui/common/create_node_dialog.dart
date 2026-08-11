@@ -21,7 +21,7 @@ class _CreateNodeDialogState extends State<CreateNodeDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => AlertDialog.adaptive(
     title: Text(widget.title),
     content: TextField(
       controller: _controller,

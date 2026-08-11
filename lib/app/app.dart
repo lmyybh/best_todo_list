@@ -16,7 +16,7 @@ class TodoApp extends StatelessWidget {
       listenable: controller,
       builder: (context, _) => MaterialApp(
         debugShowCheckedModeBanner: false,
-        title: '枝序',
+        title: 'todo',
         locale: const Locale('zh', 'CN'),
         supportedLocales: const <Locale>[Locale('zh', 'CN'), Locale('en')],
         localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
