@@ -1,6 +1,7 @@
 import 'package:best_todo_list/app/app.dart';
 import 'package:best_todo_list/app/app_controller.dart';
 import 'package:best_todo_list/domain/node_service.dart';
+import 'package:best_todo_list/ui/common/node_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -75,5 +76,27 @@ void main() {
     expect(find.text('把注意力留给眼前的事'), findsOneWidget);
     expect(find.text('有日期任务'), findsOneWidget);
     expect(find.byType(Switch), findsOneWidget);
+  });
+
+  testWidgets('逾期任务卡片使用明确的可见标题颜色', (tester) async {
+    final task = await controller.create(title: '逾期任务');
+    await controller.updateDeadline(task!.id, DateTime(2026, 8, 11, 8));
+    controller.setView(AppView.timeline);
+    await tester.binding.setSurfaceSize(const Size(1100, 760));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(TodoApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已逾期'), findsOneWidget);
+    final titleFinder = find.descendant(
+      of: find.byType(NodeTile),
+      matching: find.text('逾期任务'),
+    );
+    expect(titleFinder, findsOneWidget);
+    final title = tester.widget<Text>(titleFinder);
+    expect(
+      title.style?.color,
+      Theme.of(tester.element(titleFinder)).colorScheme.onSurface,
+    );
   });
 }
