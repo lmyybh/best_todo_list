@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 
-void main() {
-  runApp(const EmptyApp());
-}
+import 'app/app.dart';
+import 'app/app_controller.dart';
+import 'data/app_database.dart';
+import 'data/sqlite_node_repository.dart';
+import 'domain/node_service.dart';
 
-class EmptyApp extends StatelessWidget {
-  const EmptyApp({super.key});
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
 
-  @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: Scaffold(),
-    );
-  }
+  final database = await AppDatabase.open();
+  final repository = SqliteNodeRepository(database);
+  final controller = AppController(NodeService(repository));
+  await controller.load();
+
+  runApp(TodoApp(controller: controller));
 }
