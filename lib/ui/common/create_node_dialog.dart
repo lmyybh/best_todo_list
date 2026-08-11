@@ -21,13 +21,17 @@ class _CreateNodeDialogState extends State<CreateNodeDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog.adaptive(
+  Widget build(BuildContext context) => AlertDialog(
     title: Text(widget.title),
-    content: TextField(
-      controller: _controller,
-      autofocus: true,
-      decoration: const InputDecoration(labelText: '标题'),
-      onSubmitted: (_) => _submit(),
+    content: SizedBox(
+      width: 360,
+      child: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(labelText: '标题', hintText: '输入事件名称'),
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _submit(),
+      ),
     ),
     actions: <Widget>[
       TextButton(

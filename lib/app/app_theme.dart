@@ -11,7 +11,10 @@ abstract final class AppTheme {
     sidebar: const Color(0xFFF3F1EC),
     text: const Color(0xFF20201E),
     muted: const Color(0xFF696863),
+    faint: const Color(0xFF98958E),
     border: const Color(0xFFDFDDD6),
+    borderSoft: const Color(0xFFEBE9E3),
+    surfaceHover: const Color(0xFFF8F7F3),
     accentColor: accent,
   );
 
@@ -22,7 +25,10 @@ abstract final class AppTheme {
     sidebar: const Color(0xFF252623),
     text: const Color(0xFFF1EFE8),
     muted: const Color(0xFFB3B0A8),
+    faint: const Color(0xFF85827B),
     border: const Color(0xFF3E3F3B),
+    borderSoft: const Color(0xFF333430),
+    surfaceHover: const Color(0xFF30312E),
     accentColor: darkAccent,
   );
 
@@ -33,7 +39,10 @@ abstract final class AppTheme {
     required Color sidebar,
     required Color text,
     required Color muted,
+    required Color faint,
     required Color border,
+    required Color borderSoft,
+    required Color surfaceHover,
     required Color accentColor,
   }) {
     final scheme = ColorScheme.fromSeed(
@@ -84,7 +93,10 @@ abstract final class AppTheme {
         AppColors(
           sidebar: sidebar,
           muted: muted,
+          faint: faint,
           border: border,
+          borderSoft: borderSoft,
+          surfaceHover: surfaceHover,
           accentSoft: brightness == Brightness.light
               ? const Color(0xFFDFF0EF)
               : const Color(0xFF223F3F),
@@ -101,14 +113,20 @@ class AppColors extends ThemeExtension<AppColors> {
   const AppColors({
     required this.sidebar,
     required this.muted,
+    required this.faint,
     required this.border,
+    required this.borderSoft,
+    required this.surfaceHover,
     required this.accentSoft,
     required this.danger,
   });
 
   final Color sidebar;
   final Color muted;
+  final Color faint;
   final Color border;
+  final Color borderSoft;
+  final Color surfaceHover;
   final Color accentSoft;
   final Color danger;
 
@@ -119,13 +137,19 @@ class AppColors extends ThemeExtension<AppColors> {
   AppColors copyWith({
     Color? sidebar,
     Color? muted,
+    Color? faint,
     Color? border,
+    Color? borderSoft,
+    Color? surfaceHover,
     Color? accentSoft,
     Color? danger,
   }) => AppColors(
     sidebar: sidebar ?? this.sidebar,
     muted: muted ?? this.muted,
+    faint: faint ?? this.faint,
     border: border ?? this.border,
+    borderSoft: borderSoft ?? this.borderSoft,
+    surfaceHover: surfaceHover ?? this.surfaceHover,
     accentSoft: accentSoft ?? this.accentSoft,
     danger: danger ?? this.danger,
   );
@@ -136,7 +160,10 @@ class AppColors extends ThemeExtension<AppColors> {
     return AppColors(
       sidebar: Color.lerp(sidebar, other.sidebar, t)!,
       muted: Color.lerp(muted, other.muted, t)!,
+      faint: Color.lerp(faint, other.faint, t)!,
       border: Color.lerp(border, other.border, t)!,
+      borderSoft: Color.lerp(borderSoft, other.borderSoft, t)!,
+      surfaceHover: Color.lerp(surfaceHover, other.surfaceHover, t)!,
       accentSoft: Color.lerp(accentSoft, other.accentSoft, t)!,
       danger: Color.lerp(danger, other.danger, t)!,
     );

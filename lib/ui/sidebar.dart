@@ -28,24 +28,73 @@ class AppSidebar extends StatelessWidget {
           children: <Widget>[
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
-              child: SegmentedButton<AppView>(
-                segments: const <ButtonSegment<AppView>>[
-                  ButtonSegment(
-                    value: AppView.events,
-                    icon: Icon(Icons.account_tree_outlined, size: 17),
-                    label: Text('事件'),
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: colors.borderSoft,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: SegmentedButton<AppView>(
+                  segments: const <ButtonSegment<AppView>>[
+                    ButtonSegment(
+                      value: AppView.events,
+                      icon: Icon(Icons.account_tree_outlined, size: 15),
+                      label: Text('事件'),
+                    ),
+                    ButtonSegment(
+                      value: AppView.timeline,
+                      icon: Icon(Icons.timeline_outlined, size: 15),
+                      label: Text('时间线'),
+                    ),
+                  ],
+                  selected: <AppView>{controller.view},
+                  onSelectionChanged: (selection) =>
+                      controller.setView(selection.first),
+                  showSelectedIcon: false,
+                  style: ButtonStyle(
+                    minimumSize: const WidgetStatePropertyAll(Size(0, 32)),
+                    padding: const WidgetStatePropertyAll(
+                      EdgeInsets.symmetric(horizontal: 10),
+                    ),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    side: const WidgetStatePropertyAll(BorderSide.none),
+                    shape: WidgetStatePropertyAll(
+                      RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(7),
+                      ),
+                    ),
+                    backgroundColor: WidgetStateProperty.resolveWith<Color?>((
+                      states,
+                    ) {
+                      if (states.contains(WidgetState.selected)) {
+                        return Theme.of(context).colorScheme.surface;
+                      }
+                      return Colors.transparent;
+                    }),
+                    foregroundColor: WidgetStateProperty.resolveWith<Color?>((
+                      states,
+                    ) {
+                      return states.contains(WidgetState.selected)
+                          ? Theme.of(context).colorScheme.onSurface
+                          : colors.muted;
+                    }),
+                    elevation: WidgetStateProperty.resolveWith<double>((
+                      states,
+                    ) {
+                      return states.contains(WidgetState.selected) ? 1 : 0;
+                    }),
+                    shadowColor: WidgetStatePropertyAll(
+                      Colors.black.withValues(alpha: 0.10),
+                    ),
+                    surfaceTintColor: const WidgetStatePropertyAll(
+                      Colors.transparent,
+                    ),
+                    textStyle: const WidgetStatePropertyAll(
+                      TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
                   ),
-                  ButtonSegment(
-                    value: AppView.timeline,
-                    icon: Icon(Icons.timeline_outlined, size: 17),
-                    label: Text('时间线'),
-                  ),
-                ],
-                selected: <AppView>{controller.view},
-                onSelectionChanged: (selection) =>
-                    controller.setView(selection.first),
-                showSelectedIcon: false,
-                style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                ),
               ),
             ),
             Expanded(
@@ -198,23 +247,39 @@ class _TreeNode extends StatelessWidget {
           minTileHeight: 36,
           contentPadding: EdgeInsets.only(left: 6 + depth * 16, right: 8),
           leading: SizedBox(
-            width: 20,
-            child: hasChildren
-                ? IconButton(
-                    padding: EdgeInsets.zero,
-                    tooltip: expanded ? '折叠' : '展开',
-                    onPressed: () => controller.toggleExpanded(node.id),
-                    icon: Icon(
-                      expanded ? Icons.expand_more : Icons.chevron_right,
-                      size: 17,
+            width: 34,
+            child: Row(
+              children: <Widget>[
+                if (hasChildren)
+                  Tooltip(
+                    message: expanded ? '折叠' : '展开',
+                    child: InkResponse(
+                      onTap: () => controller.toggleExpanded(node.id),
+                      radius: 12,
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: Icon(
+                          expanded ? Icons.expand_more : Icons.chevron_right,
+                          size: 15,
+                        ),
+                      ),
                     ),
                   )
-                : Icon(
-                    Icons.circle_outlined,
-                    size: 7,
-                    color: AppColors.of(context).muted,
-                  ),
+                else
+                  const SizedBox(width: 18),
+                const SizedBox(width: 4),
+                Icon(
+                  hasChildren ? Icons.circle : Icons.circle_outlined,
+                  size: hasChildren ? 8 : 7,
+                  color: hasChildren
+                      ? Theme.of(context).colorScheme.primary
+                      : colors.muted,
+                ),
+              ],
+            ),
           ),
+          horizontalTitleGap: 5,
           title: Text(
             node.title,
             maxLines: 1,
@@ -280,14 +345,31 @@ class _TreeNode extends StatelessWidget {
             child: tile,
           ),
         ),
-        if (expanded)
-          for (final child in children)
-            _TreeNode(
-              controller: controller,
-              tree: tree,
-              node: child,
-              depth: depth + 1,
-            ),
+        if (expanded && children.isNotEmpty)
+          Stack(
+            children: <Widget>[
+              Positioned(
+                left: 15 + depth * 16,
+                top: 0,
+                bottom: 4,
+                child: ColoredBox(
+                  color: colors.border,
+                  child: const SizedBox(width: 1),
+                ),
+              ),
+              Column(
+                children: <Widget>[
+                  for (final child in children)
+                    _TreeNode(
+                      controller: controller,
+                      tree: tree,
+                      node: child,
+                      depth: depth + 1,
+                    ),
+                ],
+              ),
+            ],
+          ),
       ],
     );
   }

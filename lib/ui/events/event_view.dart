@@ -77,7 +77,7 @@ class EventView extends StatelessWidget {
                               cursor: SystemMouseCursors.grab,
                               child: Icon(
                                 Icons.drag_indicator,
-                                size: 19,
+                                size: 17,
                                 color: AppColors.of(context).muted,
                               ),
                             ),
@@ -147,11 +147,8 @@ class _EventHeader extends StatelessWidget {
         .where((leaf) => leaf.completedAt != null)
         .length;
     final path = tree.pathFor(node.id);
-    return Container(
+    return Padding(
       padding: const EdgeInsets.fromLTRB(42, 32, 42, 18),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: colors.border)),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -162,11 +159,26 @@ class _EventHeader extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(
-                      path.length > 1
-                          ? path.sublist(0, path.length - 1).join('  /  ')
-                          : '所有事件',
-                      style: TextStyle(color: colors.muted, fontSize: 12),
+                    Row(
+                      children: <Widget>[
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '事件',
+                          style: TextStyle(
+                            color: colors.muted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 7),
                     _EditableTitle(
@@ -175,11 +187,17 @@ class _EventHeader extends StatelessWidget {
                       onSaved: (value) =>
                           controller.updateTitle(node.id, value),
                     ),
+                    const SizedBox(height: 7),
+                    Text(
+                      <String>['所有事件', ...path].join('  /  '),
+                      style: TextStyle(color: colors.faint, fontSize: 12),
+                    ),
                   ],
                 ),
               ),
               PopupMenuButton<String>(
                 tooltip: '更多操作',
+                icon: Icon(Icons.more_horiz, size: 19, color: colors.muted),
                 onSelected: (value) {
                   if (value == 'delete') {
                     _deleteSelected(context, controller, node.id);
@@ -259,7 +277,7 @@ class _EventHeader extends StatelessWidget {
                           child: Stack(
                             fit: StackFit.expand,
                             children: <Widget>[
-                              CircularProgressIndicator.adaptive(
+                              CircularProgressIndicator(
                                 value: leaves.isEmpty
                                     ? 0
                                     : completedCount / leaves.length,
@@ -406,6 +424,20 @@ class _QuickAdd extends StatefulWidget {
 
 class _QuickAddState extends State<_QuickAdd> {
   final TextEditingController _controller = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+  var _focused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(_handleFocusChanged);
+  }
+
+  void _handleFocusChanged() {
+    if (_focused != _focusNode.hasFocus) {
+      setState(() => _focused = _focusNode.hasFocus);
+    }
+  }
 
   Future<void> _submit(String value) async {
     if (value.trim().isEmpty) return;
@@ -419,21 +451,117 @@ class _QuickAddState extends State<_QuickAdd> {
 
   @override
   void dispose() {
+    _focusNode.removeListener(_handleFocusChanged);
+    _focusNode.dispose();
     _controller.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => TextField(
-    controller: _controller,
-    onSubmitted: _submit,
-    decoration: const InputDecoration(
-      prefixIcon: Icon(Icons.add, size: 19),
-      hintText: '添加一个子任务…',
-      suffixText: '↵',
-      isDense: true,
-    ),
-  );
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final radius = BorderRadius.circular(10);
+    return CustomPaint(
+      foregroundPainter: _focused
+          ? null
+          : _DashedRoundedBorderPainter(color: colors.border, borderRadius: 10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        height: 45,
+        padding: const EdgeInsets.symmetric(horizontal: 13),
+        decoration: BoxDecoration(
+          color: _focused
+              ? Theme.of(context).colorScheme.surface
+              : Colors.transparent,
+          border: _focused
+              ? Border.all(color: Theme.of(context).colorScheme.primary)
+              : null,
+          borderRadius: radius,
+        ),
+        child: Row(
+          children: <Widget>[
+            Icon(
+              Icons.add,
+              size: 18,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                onSubmitted: _submit,
+                style: const TextStyle(fontSize: 12),
+                decoration: InputDecoration(
+                  isCollapsed: true,
+                  filled: false,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
+                  errorBorder: InputBorder.none,
+                  focusedErrorBorder: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
+                  hintText: '添加一个子任务…',
+                  hintStyle: TextStyle(color: colors.muted),
+                ),
+              ),
+            ),
+            Container(
+              constraints: const BoxConstraints(minWidth: 22),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                border: Border.all(color: colors.border),
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: Text(
+                '↵',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: colors.muted, fontSize: 10),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DashedRoundedBorderPainter extends CustomPainter {
+  const _DashedRoundedBorderPainter({
+    required this.color,
+    required this.borderRadius,
+  });
+
+  final Color color;
+  final double borderRadius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          Offset.zero & size,
+          Radius.circular(borderRadius),
+        ),
+      );
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        canvas.drawPath(metric.extractPath(distance, distance + 5), paint);
+        distance += 9;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedRoundedBorderPainter oldDelegate) =>
+      color != oldDelegate.color || borderRadius != oldDelegate.borderRadius;
 }
 
 class _SectionHeader extends StatelessWidget {
@@ -452,6 +580,13 @@ class _SectionHeader extends StatelessWidget {
       Text(
         '$count',
         style: TextStyle(fontSize: 11, color: AppColors.of(context).muted),
+      ),
+      const Spacer(),
+      Icon(Icons.sort, size: 14, color: AppColors.of(context).faint),
+      const SizedBox(width: 5),
+      Text(
+        '手动排序',
+        style: TextStyle(fontSize: 11, color: AppColors.of(context).faint),
       ),
     ],
   );
