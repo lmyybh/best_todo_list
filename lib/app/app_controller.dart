@@ -9,10 +9,12 @@ enum AppView { events, timeline }
 
 class AppController extends ChangeNotifier {
   AppController(this.service, {DateTime Function()? clock})
-    : _clock = clock ?? DateTime.now;
+    : _clock = clock ?? DateTime.now,
+      _now = (clock ?? DateTime.now)();
 
   final NodeService service;
   final DateTime Function() _clock;
+  DateTime _now;
   List<TodoNode> _nodes = const <TodoNode>[];
   String? _selectedId;
   bool _loading = true;
@@ -33,10 +35,22 @@ class AppController extends ChangeNotifier {
   TodoNode? get selectedNode =>
       _selectedId == null ? null : tree.nodes[_selectedId];
   bool get canUndoDelete => _lastDeletion != null;
+  DateTime get now => _now;
 
   List<TimelineEntry> get timelineEntries => TimelineQuery(
-    _clock(),
+    _now,
   ).entries(tree, timelineGroup, showCompleted: showCompleted);
+
+  void refreshTime() {
+    final next = _clock();
+    final dateChanged =
+        next.year != _now.year ||
+        next.month != _now.month ||
+        next.day != _now.day;
+    final timezoneChanged = next.timeZoneOffset != _now.timeZoneOffset;
+    _now = next;
+    if (dateChanged || timezoneChanged) notifyListeners();
+  }
 
   Future<void> load() async {
     _loading = true;

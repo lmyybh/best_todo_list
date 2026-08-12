@@ -13,6 +13,7 @@ class NodeTile extends StatefulWidget {
     required this.onToggleComplete,
     this.path,
     this.trailing,
+    this.now,
     super.key,
   });
 
@@ -22,6 +23,7 @@ class NodeTile extends StatefulWidget {
   final ValueChanged<bool> onToggleComplete;
   final String? path;
   final Widget? trailing;
+  final DateTime? now;
 
   @override
   State<NodeTile> createState() => _NodeTileState();
@@ -43,7 +45,8 @@ class _NodeTileState extends State<NodeTile> {
     final completedCount = leaves
         .where((leaf) => leaf.completedAt != null)
         .length;
-    final overdue = isOverdue(node.deadline, DateTime.now()) && !complete;
+    final overdue =
+        isOverdue(node.deadline, widget.now ?? DateTime.now()) && !complete;
     final hasMetadata =
         node.deadline != null || isEvent || (path?.isNotEmpty ?? false);
     final surfaceColor = isEvent

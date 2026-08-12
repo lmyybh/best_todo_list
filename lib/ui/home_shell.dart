@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app/app_controller.dart';
@@ -7,10 +9,41 @@ import 'events/event_view.dart';
 import 'sidebar.dart';
 import 'timeline/timeline_view.dart';
 
-class HomeShell extends StatelessWidget {
+class HomeShell extends StatefulWidget {
   const HomeShell({required this.controller, super.key});
 
   final AppController controller;
+
+  @override
+  State<HomeShell> createState() => _HomeShellState();
+}
+
+class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
+  Timer? _clockTimer;
+
+  AppController get controller => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _clockTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => controller.refreshTime(),
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) controller.refreshTime();
+  }
+
+  @override
+  void dispose() {
+    _clockTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

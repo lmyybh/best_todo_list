@@ -19,17 +19,19 @@ import '../helpers/memory_node_repository.dart';
 void main() {
   late MemoryNodeRepository repository;
   late AppController controller;
+  late DateTime appNow;
   var id = 0;
 
   setUp(() async {
     repository = MemoryNodeRepository();
+    appNow = DateTime(2026, 8, 11, 9);
     controller = AppController(
       NodeService(
         repository,
         clock: () => DateTime.utc(2026, 8, 11, 9),
         idGenerator: () => 'node-${++id}',
       ),
-      clock: () => DateTime(2026, 8, 11, 9),
+      clock: () => appNow,
     );
     await controller.load();
   });
@@ -275,6 +277,11 @@ void main() {
     expect(find.text('把注意力留给眼前的事'), findsOneWidget);
     expect(find.text('有日期任务'), findsOneWidget);
     expect(find.byType(Switch), findsOneWidget);
+
+    appNow = DateTime(2026, 8, 12, 0, 1);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(find.text('2026 年 8 月 12 日'), findsOneWidget);
   });
 
   testWidgets('逾期任务卡片使用明确的可见标题颜色', (tester) async {

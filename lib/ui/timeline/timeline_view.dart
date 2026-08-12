@@ -21,7 +21,7 @@ class TimelineView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final entries = controller.timelineEntries;
-    final now = DateTime.now();
+    final now = controller.now;
     final overdue = controller.timelineGroup == TimelineGroup.today
         ? entries
               .where(
@@ -145,6 +145,7 @@ class _Entry extends StatelessWidget {
       child: NodeTile(
         node: entry.node,
         tree: controller.tree,
+        now: controller.now,
         path: entry.path.length > 1
             ? entry.path.sublist(0, entry.path.length - 1).join(' / ')
             : '顶层事件',

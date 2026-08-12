@@ -57,6 +57,7 @@ class EventView extends StatelessWidget {
                       child: NodeTile(
                         node: child,
                         tree: tree,
+                        now: controller.now,
                         onOpen: () => controller.select(child.id),
                         onToggleComplete: (value) =>
                             controller.setCompleted(child.id, value),
@@ -736,7 +737,8 @@ Future<void> _editDeadline(
 ) async {
   final result = await showDialog<DeadlineDialogResult>(
     context: context,
-    builder: (context) => DeadlineDialog(initialValue: node.deadline),
+    builder: (context) =>
+        DeadlineDialog(initialValue: node.deadline, now: controller.now),
   );
   if (!context.mounted || result == null) return;
   switch (result) {
