@@ -5,6 +5,7 @@ import 'package:best_todo_list/domain/node_tree.dart';
 import 'package:best_todo_list/domain/node_service.dart';
 import 'package:best_todo_list/domain/todo_node.dart';
 import 'package:best_todo_list/ui/common/create_node_dialog.dart';
+import 'package:best_todo_list/ui/common/deadline_dialog.dart';
 import 'package:best_todo_list/ui/common/delete_confirmation_dialog.dart';
 import 'package:best_todo_list/ui/common/node_tile.dart';
 import 'package:flutter/cupertino.dart';
@@ -522,6 +523,48 @@ void main() {
             ?.resolve(<WidgetState>{}),
         AppColors.of(tester.element(deleteButton)).danger,
       );
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('macOS 截止时间使用单个桌面表单弹窗', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showDialog<DeadlineDialogResult>(
+                context: context,
+                builder: (context) => DeadlineDialog(
+                  initialValue: DateTime(2026, 8, 12, 9, 45),
+                  now: DateTime(2026, 8, 12, 8),
+                ),
+              ),
+              child: const Text('打开'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('打开'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byType(CalendarDatePicker), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('deadline-hour')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('deadline-minute')),
+        findsOneWidget,
+      );
+      expect(find.text('今天'), findsOneWidget);
+      expect(find.text('明天'), findsOneWidget);
+      expect(find.text('清除'), findsOneWidget);
+      expect(find.byType(BottomSheet), findsNothing);
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }

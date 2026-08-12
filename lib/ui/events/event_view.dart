@@ -5,6 +5,7 @@ import '../../app/app_theme.dart';
 import '../../domain/node_tree.dart';
 import '../../domain/todo_node.dart';
 import '../common/create_node_dialog.dart';
+import '../common/deadline_dialog.dart';
 import '../common/delete_confirmation_dialog.dart';
 import '../common/formatters.dart';
 import '../common/node_tile.dart';
@@ -700,49 +701,17 @@ Future<void> _editDeadline(
   AppController controller,
   TodoNode node,
 ) async {
-  final action = await showModalBottomSheet<String>(
+  final result = await showDialog<DeadlineDialogResult>(
     context: context,
-    builder: (context) => SafeArea(
-      child: Wrap(
-        children: <Widget>[
-          ListTile(
-            leading: const Icon(Icons.edit_calendar_outlined),
-            title: const Text('设置日期和时间'),
-            onTap: () => Navigator.pop(context, 'set'),
-          ),
-          if (node.deadline != null)
-            ListTile(
-              leading: const Icon(Icons.event_busy_outlined),
-              title: const Text('清除截止时间'),
-              onTap: () => Navigator.pop(context, 'clear'),
-            ),
-        ],
-      ),
-    ),
+    builder: (context) => DeadlineDialog(initialValue: node.deadline),
   );
-  if (!context.mounted || action == null) return;
-  if (action == 'clear') {
-    await controller.updateDeadline(node.id, null);
-    return;
+  if (!context.mounted || result == null) return;
+  switch (result) {
+    case SaveDeadline(:final value):
+      await controller.updateDeadline(node.id, value);
+    case ClearDeadline():
+      await controller.updateDeadline(node.id, null);
   }
-  final initial =
-      node.deadline?.toLocal() ?? DateTime.now().add(const Duration(days: 1));
-  final date = await showDatePicker(
-    context: context,
-    firstDate: DateTime(2000),
-    lastDate: DateTime(2100),
-    initialDate: initial,
-  );
-  if (date == null || !context.mounted) return;
-  final time = await showTimePicker(
-    context: context,
-    initialTime: TimeOfDay.fromDateTime(initial),
-  );
-  if (time == null) return;
-  await controller.updateDeadline(
-    node.id,
-    DateTime(date.year, date.month, date.day, time.hour, time.minute),
-  );
 }
 
 Future<void> _deleteSelected(
