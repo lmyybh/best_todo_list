@@ -203,6 +203,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(controller.tree.isComplete(child.id), isTrue);
     expect(find.text('完成时间 2026/08/11'), findsOneWidget);
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+    expect(find.text('删除任务'), findsOneWidget);
+    expect(find.text('删除事件'), findsNothing);
+    await tester.tap(find.text('删除任务'));
+    await tester.pumpAndSettle();
+    expect(find.text('删除这个任务？'), findsOneWidget);
+    expect(find.text('删除后可以在提示消失前撤销。'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('时间线切换和已完成开关可用', (tester) async {

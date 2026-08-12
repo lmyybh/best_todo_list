@@ -213,15 +213,15 @@ class _EventHeader extends StatelessWidget {
                 icon: Icon(Icons.more_horiz, size: 19, color: colors.muted),
                 onSelected: (value) {
                   if (value == 'delete') {
-                    _deleteSelected(context, controller, node.id);
+                    _deleteSelected(context, controller, node);
                   }
                 },
-                itemBuilder: (context) => const <PopupMenuEntry<String>>[
+                itemBuilder: (context) => <PopupMenuEntry<String>>[
                   PopupMenuItem(
                     value: 'delete',
                     child: ListTile(
-                      leading: Icon(Icons.delete_outline),
-                      title: Text('删除事件'),
+                      leading: const Icon(Icons.delete_outline),
+                      title: Text(isLeaf ? '删除任务' : '删除事件'),
                       contentPadding: EdgeInsets.zero,
                     ),
                   ),
@@ -717,21 +717,22 @@ Future<void> _editDeadline(
 Future<void> _deleteSelected(
   BuildContext context,
   AppController controller,
-  String nodeId,
+  TodoNode node,
 ) async {
+  final isLeaf = controller.tree.isLeaf(node.id);
   final confirmed = await showDialog<bool>(
     context: context,
-    builder: (context) => const DeleteConfirmationDialog(
-      title: '删除这个事件？',
-      message: '它的所有子任务也会一起删除。你可以在提示消失前撤销。',
+    builder: (context) => DeleteConfirmationDialog(
+      title: isLeaf ? '删除这个任务？' : '删除这个事件？',
+      message: isLeaf ? '删除后可以在提示消失前撤销。' : '它的所有子任务也会一起删除。你可以在提示消失前撤销。',
     ),
   );
   if (confirmed != true || !context.mounted) return;
-  await controller.delete(nodeId);
+  await controller.delete(node.id);
   if (!context.mounted || controller.error != null) return;
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
-      content: const Text('事件已删除'),
+      content: Text(isLeaf ? '任务已删除' : '事件已删除'),
       action: SnackBarAction(label: '撤销', onPressed: controller.undoDelete),
     ),
   );
