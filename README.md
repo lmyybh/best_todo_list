@@ -21,9 +21,34 @@ v1 不包含账号、同步、提醒、搜索、标签、优先级、备注、�
 
 环境要求：Flutter 3.44 或兼容的稳定版本、macOS 桌面开发工具链。
 
+开发调试并实时查看改动：
+
 ```sh
 flutter pub get
 flutter run -d macos
+```
+
+应用运行后，在终端按 `r` 热重载，按 `R` 热重启，按 `q` 退出。
+
+## 构建 macOS App
+
+在项目根目录执行 Release 构建：
+
+```sh
+flutter pub get
+flutter build macos --release
+```
+
+构建产物位于：
+
+```text
+build/macos/Build/Products/Release/todo.app
+```
+
+可以使用以下命令直接打开：
+
+```sh
+open build/macos/Build/Products/Release/todo.app
 ```
 
 ## 检查与测试
