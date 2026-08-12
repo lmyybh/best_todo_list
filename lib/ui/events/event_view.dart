@@ -410,11 +410,23 @@ class _EditableTitleState extends State<_EditableTitle> {
   );
   late final FocusNode _focusNode = FocusNode()
     ..addListener(_saveWhenFocusLeaves);
+  String? _errorText;
 
   void _saveWhenFocusLeaves() {
-    if (!_focusNode.hasFocus && _controller.text.trim() != widget.title) {
-      widget.onSaved(_controller.text);
+    if (!_focusNode.hasFocus) _save();
+  }
+
+  void _save() {
+    final title = _controller.text.trim();
+    if (title.isEmpty) {
+      setState(() => _errorText = '标题不能为空');
+      return;
     }
+    if (_errorText != null) setState(() => _errorText = null);
+    if (title == widget.title) return;
+    _controller.text = title;
+    _controller.selection = TextSelection.collapsed(offset: title.length);
+    widget.onSaved(title);
   }
 
   @override
@@ -433,19 +445,25 @@ class _EditableTitleState extends State<_EditableTitle> {
       controller: _controller,
       focusNode: _focusNode,
       maxLines: 1,
-      onSubmitted: widget.onSaved,
+      onChanged: (_) {
+        if (_errorText != null && _controller.text.trim().isNotEmpty) {
+          setState(() => _errorText = null);
+        }
+      },
+      onSubmitted: (_) => _save(),
       style: const TextStyle(
         fontSize: 30,
         height: 1.2,
         fontWeight: FontWeight.w700,
         letterSpacing: -0.8,
       ),
-      decoration: const InputDecoration(
+      decoration: InputDecoration(
         isDense: true,
         filled: false,
         border: InputBorder.none,
         enabledBorder: InputBorder.none,
-        focusedBorder: UnderlineInputBorder(),
+        focusedBorder: const UnderlineInputBorder(),
+        errorText: _errorText,
       ),
     ),
   );
@@ -464,6 +482,7 @@ class _QuickAddState extends State<_QuickAdd> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   var _focused = false;
+  var _invalid = false;
 
   @override
   void initState() {
@@ -478,7 +497,11 @@ class _QuickAddState extends State<_QuickAdd> {
   }
 
   Future<void> _submit(String value) async {
-    if (value.trim().isEmpty) return;
+    if (value.trim().isEmpty) {
+      setState(() => _invalid = true);
+      return;
+    }
+    if (_invalid) setState(() => _invalid = false);
     await widget.controller.create(
       parentId: widget.parentId,
       title: value,
@@ -505,7 +528,7 @@ class _QuickAddState extends State<_QuickAdd> {
           : _DashedRoundedBorderPainter(color: colors.border, borderRadius: 10),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        height: 45,
+        constraints: const BoxConstraints(minHeight: 45),
         padding: const EdgeInsets.symmetric(horizontal: 13),
         decoration: BoxDecoration(
           color: _focused
@@ -525,23 +548,33 @@ class _QuickAddState extends State<_QuickAdd> {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: TextField(
-                controller: _controller,
-                focusNode: _focusNode,
-                onSubmitted: _submit,
-                style: const TextStyle(fontSize: 12),
-                decoration: InputDecoration(
-                  isCollapsed: true,
-                  filled: false,
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  disabledBorder: InputBorder.none,
-                  errorBorder: InputBorder.none,
-                  focusedErrorBorder: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                  hintText: '添加一个子任务…',
-                  hintStyle: TextStyle(color: colors.muted),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: TextField(
+                  controller: _controller,
+                  focusNode: _focusNode,
+                  onChanged: (_) {
+                    if (_invalid && _controller.text.trim().isNotEmpty) {
+                      setState(() => _invalid = false);
+                    }
+                  },
+                  onSubmitted: _submit,
+                  style: const TextStyle(fontSize: 12),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
+                    focusedErrorBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                    hintText: '添加一个子任务…',
+                    hintStyle: TextStyle(color: colors.muted),
+                    errorText: _invalid ? '标题不能为空' : null,
+                    errorStyle: TextStyle(color: colors.danger, fontSize: 10),
+                  ),
                 ),
               ),
             ),

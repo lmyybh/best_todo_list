@@ -45,6 +45,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '新建事件'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '新版发布');
+    await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, '创建'));
     await tester.pumpAndSettle();
 
@@ -73,12 +74,17 @@ void main() {
     expect(quickAddDecoration.border, InputBorder.none);
     expect(quickAddDecoration.enabledBorder, InputBorder.none);
     expect(quickAddDecoration.focusedBorder, InputBorder.none);
+    await tester.enterText(quickAdd, '   ');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.text('标题不能为空'), findsOneWidget);
+    expect(controller.tree.childrenOf(root!.id), isEmpty);
     await tester.enterText(quickAdd, '确认最终文案');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
     expect(find.text('确认最终文案'), findsWidgets);
-    expect(controller.selectedId, root!.id);
+    expect(controller.selectedId, root.id);
     final child = controller.tree.childrenOf(root.id).single;
     expect(
       find.descendant(
@@ -311,6 +317,7 @@ void main() {
     await tester.tap(find.text('重命名'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '新名称');
+    await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, '保存'));
     await tester.pumpAndSettle();
     expect(controller.nodes.single.title, '新名称');
@@ -438,6 +445,15 @@ void main() {
       );
       expect(find.text('输入事件名称'), findsOneWidget);
       expect(tester.getSize(find.byType(TextField)).width, 320);
+      final confirmButton = find.byKey(
+        const ValueKey<String>('node-title-confirm-button'),
+      );
+      expect(tester.widget<FilledButton>(confirmButton).onPressed, isNull);
+      await tester.enterText(find.byType(TextFormField), '   ');
+      expect(tester.widget<FilledButton>(confirmButton).onPressed, isNull);
+      await tester.enterText(find.byType(TextFormField), '新事件');
+      await tester.pump();
+      expect(tester.widget<FilledButton>(confirmButton).onPressed, isNotNull);
       expect(
         (tester.widget<AlertDialog>(find.byType(AlertDialog)).shape
                 as RoundedRectangleBorder)

@@ -21,6 +21,7 @@ class CreateNodeDialog extends StatefulWidget {
 }
 
 class _CreateNodeDialogState extends State<CreateNodeDialog> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   late final TextEditingController _controller = TextEditingController(
     text: widget.initialTitle,
   );
@@ -34,12 +35,19 @@ class _CreateNodeDialogState extends State<CreateNodeDialog> {
         extentOffset: _controller.text.length,
       );
     }
+    _controller.addListener(_handleTextChanged);
   }
 
-  void _submit() => Navigator.pop(context, _controller.text);
+  void _handleTextChanged() => setState(() {});
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.pop(context, _controller.text.trim());
+  }
 
   @override
   void dispose() {
+    _controller.removeListener(_handleTextChanged);
     _controller.dispose();
     super.dispose();
   }
@@ -58,15 +66,21 @@ class _CreateNodeDialogState extends State<CreateNodeDialog> {
     ),
     content: SizedBox(
       width: 320,
-      child: TextField(
-        controller: _controller,
-        autofocus: true,
-        decoration: InputDecoration(
-          labelText: widget.fieldLabel,
-          hintText: widget.hintText,
+      child: Form(
+        key: _formKey,
+        child: TextFormField(
+          controller: _controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: widget.fieldLabel,
+            hintText: widget.hintText,
+          ),
+          validator: (value) => value == null || value.trim().isEmpty
+              ? '${widget.fieldLabel}不能为空'
+              : null,
+          textInputAction: TextInputAction.done,
+          onFieldSubmitted: (_) => _submit(),
         ),
-        textInputAction: TextInputAction.done,
-        onSubmitted: (_) => _submit(),
       ),
     ),
     actions: <Widget>[
@@ -76,7 +90,7 @@ class _CreateNodeDialogState extends State<CreateNodeDialog> {
       ),
       FilledButton(
         key: const ValueKey<String>('node-title-confirm-button'),
-        onPressed: _submit,
+        onPressed: _controller.text.trim().isEmpty ? null : _submit,
         child: Text(widget.confirmLabel),
       ),
     ],
