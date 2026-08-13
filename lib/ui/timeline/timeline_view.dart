@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/app_theme.dart';
@@ -11,22 +12,17 @@ class TimelineView extends StatelessWidget {
 
   final AppController controller;
 
-  static const labels = <TimelineGroup, String>{
-    TimelineGroup.today: '今天',
-    TimelineGroup.tomorrow: '明天',
-    TimelineGroup.thisWeek: '本周',
-    TimelineGroup.other: '其他',
-  };
-
   @override
   Widget build(BuildContext context) {
-    final entries = controller.timelineEntries;
-    final now = controller.now;
-    final overdue = controller.timelineGroup == TimelineGroup.today
+    final entries = controller.selectedDateEntries;
+    final overdue =
+        !controller.timelineLaterSelected &&
+            _sameDate(controller.selectedTimelineDate, controller.now)
         ? entries
               .where(
                 (entry) =>
-                    isOverdue(entry.node.deadline, now) && !entry.isComplete,
+                    isOverdue(entry.node.deadline, controller.now) &&
+                    !entry.isComplete,
               )
               .toList()
         : const <TimelineEntry>[];
@@ -34,102 +30,347 @@ class TimelineView extends StatelessWidget {
         ? entries
         : entries.where((entry) => !overdue.contains(entry)).toList();
 
-    return Column(
-      children: <Widget>[
-        Container(
-          padding: const EdgeInsets.fromLTRB(42, 32, 42, 24),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: AppColors.of(context).border),
-            ),
-          ),
-          child: Row(
+    return Focus(
+      autofocus: true,
+      onKeyEvent: (_, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+          _moveSelection(-1);
+          return KeyEventResult.handled;
+        }
+        if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+          _moveSelection(1);
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 880),
+          child: Column(
             children: <Widget>[
+              _DateNavigator(controller: controller),
+              _TimelineOptions(controller: controller),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      '${now.year} 年 ${now.month} 月 ${now.day} 日',
-                      style: TextStyle(
-                        color: AppColors.of(context).muted,
-                        fontSize: 12,
+                child: entries.isEmpty
+                    ? const _TimelineEmpty()
+                    : ListView(
+                        key: const ValueKey<String>('timeline-task-list'),
+                        padding: const EdgeInsets.fromLTRB(30, 8, 30, 48),
+                        children: <Widget>[
+                          if (overdue.isNotEmpty) ...<Widget>[
+                            _TimelineSection(
+                              title: '已逾期',
+                              count: overdue.length,
+                              danger: true,
+                            ),
+                            const SizedBox(height: 10),
+                            ...overdue.map(
+                              (entry) =>
+                                  _Entry(controller: controller, entry: entry),
+                            ),
+                            const SizedBox(height: 20),
+                          ],
+                          _TimelineSection(
+                            title: controller.timelineLaterSelected
+                                ? '更晚'
+                                : _relativeDateLabel(
+                                    controller.selectedTimelineDate,
+                                    controller.now,
+                                  ),
+                            count: regular.length,
+                          ),
+                          const SizedBox(height: 10),
+                          ...regular.map(
+                            (entry) =>
+                                _Entry(controller: controller, entry: entry),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 7),
-                    Text(
-                      labels[controller.timelineGroup]!,
-                      style: const TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.8,
-                      ),
-                    ),
-                    const SizedBox(height: 7),
-                    Text(
-                      _subtitle(controller.timelineGroup),
-                      style: TextStyle(
-                        color: AppColors.of(context).muted,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Semantics(
-                label: '显示已完成任务',
-                child: Row(
-                  children: <Widget>[
-                    Switch.adaptive(
-                      value: controller.showCompleted,
-                      onChanged: controller.setShowCompleted,
-                    ),
-                    const Text('显示已完成', style: TextStyle(fontSize: 12)),
-                  ],
-                ),
               ),
             ],
           ),
         ),
-        Expanded(
-          child: entries.isEmpty
-              ? _TimelineEmpty(group: controller.timelineGroup)
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(42, 28, 42, 48),
-                  children: <Widget>[
-                    if (overdue.isNotEmpty) ...<Widget>[
-                      _TimelineSection(
-                        title: '已逾期',
-                        count: overdue.length,
-                        danger: true,
-                      ),
-                      const SizedBox(height: 10),
-                      ...overdue.map(
-                        (entry) => _Entry(controller: controller, entry: entry),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                    _TimelineSection(
-                      title: labels[controller.timelineGroup]!,
-                      count: regular.length,
-                    ),
-                    const SizedBox(height: 10),
-                    ...regular.map(
-                      (entry) => _Entry(controller: controller, entry: entry),
-                    ),
-                  ],
-                ),
-        ),
-      ],
+      ),
     );
   }
 
-  String _subtitle(TimelineGroup group) => switch (group) {
-    TimelineGroup.today => '把注意力留给眼前的事',
-    TimelineGroup.tomorrow => '提前看一眼下一步',
-    TimelineGroup.thisWeek => '周一到周日的全部安排',
-    TimelineGroup.other => '逾期、远期和未设置时间的任务',
-  };
+  void _moveSelection(int direction) {
+    final dates = controller.timelineDates;
+    if (controller.timelineLaterSelected) {
+      if (direction < 0) controller.selectTimelineDate(dates.last);
+      return;
+    }
+    final currentIndex = dates.indexWhere(
+      (date) => _sameDate(date, controller.selectedTimelineDate),
+    );
+    if (currentIndex < 0) return;
+    final next = currentIndex + direction;
+    if (next < 0) {
+      controller.shiftTimelineWindow(-1);
+    } else if (next >= dates.length) {
+      controller.selectTimelineLater();
+    } else {
+      controller.selectTimelineDate(dates[next]);
+    }
+  }
+}
+
+class _DateNavigator extends StatelessWidget {
+  const _DateNavigator({required this.controller});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final start = controller.timelineWindowStart;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(30, 24, 30, 0),
+      child: Column(
+        children: <Widget>[
+          SizedBox(
+            height: 42,
+            child: Row(
+              children: <Widget>[
+                Text(
+                  '${start.year} 年 ${start.month} 月',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 9),
+                Text(
+                  '第 ${_isoWeek(start)} 周',
+                  style: TextStyle(color: colors.faint, fontSize: 9),
+                ),
+                const Spacer(),
+                _NavigatorButton(
+                  key: const ValueKey<String>('timeline-previous-week'),
+                  tooltip: '上一周',
+                  icon: Icons.chevron_left,
+                  onPressed: () => controller.shiftTimelineWindow(-1),
+                ),
+                TextButton(
+                  key: const ValueKey<String>('timeline-today'),
+                  onPressed: controller.resetTimelineToToday,
+                  child: const Text('回到今天', style: TextStyle(fontSize: 10)),
+                ),
+                _NavigatorButton(
+                  key: const ValueKey<String>('timeline-next-week'),
+                  tooltip: '下一周',
+                  icon: Icons.chevron_right,
+                  onPressed: () => controller.shiftTimelineWindow(1),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            height: 70,
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: colors.borderSoft)),
+            ),
+            child: Row(
+              children: <Widget>[
+                for (final date in controller.timelineDates)
+                  Expanded(
+                    child: _DateButton(
+                      date: date,
+                      now: controller.now,
+                      count: controller.timelineCount(date),
+                      selected:
+                          !controller.timelineLaterSelected &&
+                          _sameDate(date, controller.selectedTimelineDate),
+                      onPressed: () => controller.selectTimelineDate(date),
+                    ),
+                  ),
+                Expanded(
+                  child: _LaterButton(
+                    selected: controller.timelineLaterSelected,
+                    count: TimelineQuery(controller.now)
+                        .laterEntries(
+                          controller.tree,
+                          controller.timelineDates.last,
+                        )
+                        .length,
+                    onPressed: controller.selectTimelineLater,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DateButton extends StatelessWidget {
+  const _DateButton({
+    required this.date,
+    required this.now,
+    required this.count,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final DateTime date;
+  final DateTime now;
+  final int count;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => _DateSurface(
+    selected: selected,
+    onPressed: onPressed,
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: <Widget>[
+        Text(
+          _relativeDateLabel(date, now),
+          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          '${date.day}',
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+        ),
+        Text(
+          count == 0 ? '无任务' : '$count 项',
+          style: TextStyle(color: AppColors.of(context).faint, fontSize: 8),
+        ),
+      ],
+    ),
+  );
+}
+
+class _LaterButton extends StatelessWidget {
+  const _LaterButton({
+    required this.selected,
+    required this.count,
+    required this.onPressed,
+  });
+
+  final bool selected;
+  final int count;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => _DateSurface(
+    key: const ValueKey<String>('timeline-later'),
+    selected: selected,
+    onPressed: onPressed,
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: <Widget>[
+        const Text(
+          '更晚',
+          style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 4),
+        const Icon(Icons.calendar_month_outlined, size: 15),
+        const SizedBox(height: 3),
+        Text(
+          '$count 项',
+          style: TextStyle(color: AppColors.of(context).faint, fontSize: 8),
+        ),
+      ],
+    ),
+  );
+}
+
+class _DateSurface extends StatelessWidget {
+  const _DateSurface({
+    required this.selected,
+    required this.onPressed,
+    required this.child,
+    super.key,
+  });
+
+  final bool selected;
+  final VoidCallback onPressed;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    return Semantics(
+      selected: selected,
+      button: true,
+      child: InkWell(
+        onTap: onPressed,
+        mouseCursor: SystemMouseCursors.click,
+        hoverColor: colors.surfaceHover,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: selected
+                ? colors.accentSoft.withValues(alpha: 0.55)
+                : Colors.transparent,
+            border: selected
+                ? const Border(
+                    bottom: BorderSide(color: AppTheme.accent, width: 2),
+                  )
+                : null,
+          ),
+          child: DefaultTextStyle.merge(
+            style: TextStyle(color: selected ? AppTheme.accent : colors.muted),
+            child: Center(child: child),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TimelineOptions extends StatelessWidget {
+  const _TimelineOptions({required this.controller});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(30, 14, 30, 8),
+    child: Row(
+      children: <Widget>[
+        Text(
+          controller.timelineLaterSelected
+              ? '更晚的任务'
+              : '${controller.selectedTimelineDate.month} 月 ${controller.selectedTimelineDate.day} 日',
+          style: TextStyle(color: AppColors.of(context).muted, fontSize: 10),
+        ),
+        const Spacer(),
+        Switch.adaptive(
+          value: controller.showCompleted,
+          onChanged: controller.setShowCompleted,
+        ),
+        const Text('显示已完成', style: TextStyle(fontSize: 10)),
+      ],
+    ),
+  );
+}
+
+class _NavigatorButton extends StatelessWidget {
+  const _NavigatorButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+    super.key,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    tooltip: tooltip,
+    onPressed: onPressed,
+    visualDensity: VisualDensity.compact,
+    icon: Icon(icon, size: 16),
+  );
 }
 
 class _Entry extends StatelessWidget {
@@ -191,8 +432,7 @@ class _TimelineSection extends StatelessWidget {
 }
 
 class _TimelineEmpty extends StatelessWidget {
-  const _TimelineEmpty({required this.group});
-  final TimelineGroup group;
+  const _TimelineEmpty();
 
   @override
   Widget build(BuildContext context) => Center(
@@ -205,9 +445,9 @@ class _TimelineEmpty extends StatelessWidget {
           color: AppColors.of(context).muted,
         ),
         const SizedBox(height: 13),
-        Text(
-          '${TimelineView.labels[group]}没有待办',
-          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+        const Text(
+          '这一天没有待办',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 6),
         Text(
@@ -217,4 +457,33 @@ class _TimelineEmpty extends StatelessWidget {
       ],
     ),
   );
+}
+
+String _relativeDateLabel(DateTime date, DateTime now) {
+  final start = DateTime(now.year, now.month, now.day);
+  final difference = DateTime(
+    date.year,
+    date.month,
+    date.day,
+  ).difference(start).inDays;
+  if (difference == 0) return '今天';
+  if (difference == 1) return '明天';
+  return '周${const <int, String>{1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '日'}[date.weekday]}';
+}
+
+bool _sameDate(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month && a.day == b.day;
+
+int _isoWeek(DateTime date) {
+  final thursday = date.add(Duration(days: 4 - date.weekday));
+  final firstThursday = DateTime(thursday.year, 1, 4);
+  return 1 +
+      thursday
+              .difference(
+                firstThursday.subtract(
+                  Duration(days: firstThursday.weekday - 4),
+                ),
+              )
+              .inDays ~/
+          7;
 }

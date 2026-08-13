@@ -23,38 +23,41 @@ void main() {
     manualOrder: 1000,
   );
 
-  test('今天包含逾期并将逾期置顶', () {
+  test('今天可以包含逾期并将逾期置顶', () {
     final tree = NodeTree(<TodoNode>[
       node('today', deadline: DateTime(2026, 8, 11, 18)),
       node('overdue', deadline: DateTime(2026, 8, 10, 18)),
       node('tomorrow', deadline: DateTime(2026, 8, 12, 9)),
     ]);
-    final result = TimelineQuery(now).entries(tree, TimelineGroup.today);
+    final result = TimelineQuery(
+      now,
+    ).entriesForDate(tree, now, includeOverdue: true);
     expect(result.map((entry) => entry.node.id), <String>['overdue', 'today']);
   });
 
-  test('本周按周一到周日计算', () {
+  test('按日期只返回对应自然日', () {
     final tree = NodeTree(<TodoNode>[
       node('monday', deadline: DateTime(2026, 8, 10, 9)),
       node('sunday', deadline: DateTime(2026, 8, 16, 22)),
       node('next-monday', deadline: DateTime(2026, 8, 17, 9)),
     ]);
-    final result = TimelineQuery(now).entries(tree, TimelineGroup.thisWeek);
-    expect(result.map((entry) => entry.node.id), <String>['monday', 'sunday']);
+    final monday = TimelineQuery(
+      now,
+    ).entriesForDate(tree, DateTime(2026, 8, 10));
+    final sunday = TimelineQuery(
+      now,
+    ).entriesForDate(tree, DateTime(2026, 8, 16));
+    expect(monday.map((entry) => entry.node.id), <String>['monday']);
+    expect(sunday.map((entry) => entry.node.id), <String>['sunday']);
   });
 
-  test('其他按逾期、未来、无 deadline 分区', () {
+  test('更晚按未来、无 deadline 排序', () {
     final tree = NodeTree(<TodoNode>[
       node('none'),
       node('future', deadline: DateTime(2026, 8, 20)),
-      node('overdue', deadline: DateTime(2026, 8, 1)),
     ]);
-    final result = TimelineQuery(now).entries(tree, TimelineGroup.other);
-    expect(result.map((entry) => entry.node.id), <String>[
-      'overdue',
-      'future',
-      'none',
-    ]);
+    final result = TimelineQuery(now).laterEntries(tree, DateTime(2026, 8, 15));
+    expect(result.map((entry) => entry.node.id), <String>['future', 'none']);
   });
 
   test('无 deadline 的事件不显示，叶子显示', () {
@@ -62,7 +65,7 @@ void main() {
       node('event'),
       node('leaf', parentId: 'event'),
     ]);
-    final result = TimelineQuery(now).entries(tree, TimelineGroup.other);
+    final result = TimelineQuery(now).laterEntries(tree, DateTime(2026, 8, 15));
     expect(result.map((entry) => entry.node.id), <String>['leaf']);
   });
 
@@ -71,10 +74,10 @@ void main() {
       node('old', completedAt: DateTime.utc(2026, 8, 9)),
       node('new', completedAt: DateTime.utc(2026, 8, 10)),
     ]);
-    expect(TimelineQuery(now).entries(tree, TimelineGroup.other), isEmpty);
+    expect(TimelineQuery(now).laterEntries(tree, now), isEmpty);
     final shown = TimelineQuery(
       now,
-    ).entries(tree, TimelineGroup.other, showCompleted: true);
+    ).laterEntries(tree, now, showCompleted: true);
     expect(shown.map((entry) => entry.node.id), <String>['new', 'old']);
   });
 

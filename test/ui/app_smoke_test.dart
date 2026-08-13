@@ -256,14 +256,15 @@ void main() {
 
     await tester.tap(timelineNavigation);
     await tester.pumpAndSettle();
-    expect(find.text('把注意力留给眼前的事'), findsOneWidget);
+    expect(find.text('回到今天'), findsOneWidget);
+    expect(find.text('今天'), findsWidgets);
     expect(find.text('有日期任务'), findsOneWidget);
     expect(find.byType(Switch), findsOneWidget);
 
     appNow = DateTime(2026, 8, 12, 0, 1);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
-    expect(find.text('2026 年 8 月 12 日'), findsOneWidget);
+    expect(find.text('8 月 12 日'), findsOneWidget);
   });
 
   testWidgets('逾期任务卡片使用明确的可见标题颜色', (tester) async {

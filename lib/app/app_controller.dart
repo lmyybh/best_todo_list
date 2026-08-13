@@ -27,7 +27,6 @@ class AppController extends ChangeNotifier {
   bool _timelineWindowWasMoved = false;
 
   AppView view = AppView.events;
-  TimelineGroup timelineGroup = TimelineGroup.today;
   bool showCompleted = false;
   final Set<String> expandedIds = <String>{};
 
@@ -61,10 +60,6 @@ class AppController extends ChangeNotifier {
 
   int timelineCount(DateTime date) =>
       TimelineQuery(_now).countForDate(tree, date);
-
-  List<TimelineEntry> get timelineEntries => TimelineQuery(
-    _now,
-  ).entries(tree, timelineGroup, showCompleted: showCompleted);
 
   void refreshTime() {
     final next = _clock();
@@ -110,11 +105,6 @@ class AppController extends ChangeNotifier {
 
   void setView(AppView next) {
     view = next;
-    notifyListeners();
-  }
-
-  void setTimelineGroup(TimelineGroup group) {
-    timelineGroup = group;
     notifyListeners();
   }
 
