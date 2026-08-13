@@ -1,5 +1,7 @@
 # v2 开发计划
 
+状态：**已完成（2026-08-13）**
+
 设计依据：[多事件分块原型](../prototype/boards.html)；v1 基线：[v1 开发计划](v1-development-plan.md)
 
 ## 1. 版本目标

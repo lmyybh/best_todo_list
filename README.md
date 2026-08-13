@@ -2,20 +2,22 @@
 
 一款使用 Flutter 构建的 macOS 本地事件树 Todo 应用。节点没有固定的“事件”或“任务”类型：有子节点时是事件，没有子节点时就是可完成的任务。
 
-界面基于 Material 3 和 Flutter 官方自适应控件，使用桌面响应式双栏外壳。当前只维护 macOS 运行目标；组件边界为后续 Windows、Linux 桌面适配保留扩展点，暂不考虑手机端。
+界面基于 Material 3 和 Flutter 官方控件，采用暖灰纸张与深青绿的浅色桌面设计。当前只维护 macOS 运行目标，暂不考虑手机端。
 
-## v1 功能
+## v2 功能
 
 - 创建、编辑和软删除任意深度节点
-- 事件树展开、折叠、同级排序和跨父节点拖放
+- 多事件卡片并排展示，并根据窗口宽度自动换行
+- 卡片内直接查看、展开和完成任意深度任务树
+- 点击事件或任务进入详情，编辑标题、备注和截止时间
 - 叶子任务完成/取消完成，事件状态由所有叶子实时汇总
 - 可选的分钟级截止时间
-- 今天、明天、本周、其他四个时间线入口
+- 连续日期时间线、上一周/下一周、回到今天和“更晚”入口
 - 删除后短暂撤销
 - 本地 SQLite 持久化
-- 浅色、深色及跟随系统主题
+- 关闭窗口后应用继续运行，使用 Command+Q 完全退出
 
-v1 不包含账号、同步、提醒、搜索、标签、优先级、备注、重复任务和附件。
+v2 不包含账号、同步、提醒、搜索、标签、优先级、重复任务和附件。
 
 ## 运行
 
@@ -71,4 +73,4 @@ lib/
   ui/        事件视图、时间线、桌面自适应层和公共组件
 ```
 
-产品规则见 [docs/target.md](docs/target.md)，执行计划见 [docs/v1-development-plan.md](docs/v1-development-plan.md)，HTML 视觉原型位于 [prototype/index.html](prototype/index.html)。
+产品规则见 [docs/target.md](docs/target.md)，v2 执行计划见 [docs/v2-development-plan.md](docs/v2-development-plan.md)，HTML 视觉原型位于 [prototype/boards.html](prototype/boards.html)。
