@@ -135,6 +135,9 @@ void main() {
       (tester.getCenter(title).dy - tester.getCenter(row).dy).abs(),
       lessThanOrEqualTo(1),
     );
+    await tester.tapAt(tester.getTopRight(row) - const Offset(2, -18));
+    await tester.pumpAndSettle();
+    expect(controller.eventDetailOpen, isFalse);
 
     final quickAdd = find.byKey(ValueKey<String>('event-quick-add-${root.id}'));
     await tester.enterText(quickAdd, '本地实验');
@@ -191,7 +194,9 @@ void main() {
     await tester.pumpWidget(TodoApp(controller: controller));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(ValueKey<String>('event-row-${task!.id}')));
+    await tester.tap(
+      find.byKey(ValueKey<String>('event-row-title-${task!.id}')),
+    );
     await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey<String>('event-detail-panel')),
