@@ -1,13 +1,14 @@
 import 'package:best_todo_list/app/app.dart';
 import 'package:best_todo_list/app/app_controller.dart';
 import 'package:best_todo_list/domain/node_service.dart';
+import 'package:best_todo_list/ui/events/event_board_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/memory_node_repository.dart';
 
 void main() {
-  testWidgets('事件卡片随桌面宽度形成一到三列并保持自然高度', (tester) async {
+  testWidgets('事件卡片随桌面宽度分列并在同行保持等高', (tester) async {
     var id = 0;
     final controller = AppController(
       NodeService(
@@ -29,7 +30,7 @@ void main() {
       );
       roots.add(root!.id);
     }
-    for (var index = 0; index < 4; index++) {
+    for (var index = 0; index < 8; index++) {
       await controller.create(
         parentId: roots.first,
         title: '任务 $index',
@@ -57,11 +58,40 @@ void main() {
     await expectColumns(1100, 2);
     await expectColumns(1440, 3);
 
-    final tallCard = find.byKey(ValueKey<String>('event-card-${roots.first}'));
-    final shortCard = find.byKey(ValueKey<String>('event-card-${roots[1]}'));
+    final firstCard = find.byKey(ValueKey<String>('event-card-${roots.first}'));
+    final firstRowPeer = find.byKey(ValueKey<String>('event-card-${roots[1]}'));
+    final secondRowCard = find.byKey(
+      ValueKey<String>('event-card-${roots[3]}'),
+    );
+    final lastRowCard = find.byKey(ValueKey<String>('event-card-${roots[6]}'));
+    final newEventCard = find.byKey(const ValueKey<String>('new-event-card'));
     expect(
-      tester.getSize(tallCard).height,
-      greaterThan(tester.getSize(shortCard).height),
+      tester.getSize(firstCard).height,
+      tester.getSize(firstRowPeer).height,
+    );
+    expect(
+      tester.getSize(firstCard).height,
+      inInclusiveRange(
+        EventBoardView.minimumCardHeight,
+        EventBoardView.maximumCardHeight,
+      ),
+    );
+    expect(
+      tester.getSize(secondRowCard).height,
+      lessThan(tester.getSize(firstCard).height),
+    );
+    expect(
+      tester.getSize(lastRowCard).height,
+      tester.getSize(newEventCard).height,
+    );
+    expect(
+      find.byKey(ValueKey<String>('event-more-${roots.first}')),
+      findsOneWidget,
+    );
+    expect(find.text('还有 3 项任务'), findsOneWidget);
+    expect(
+      find.byKey(ValueKey<String>('event-tree-scroll-${roots.first}')),
+      findsNothing,
     );
   });
 
