@@ -6,7 +6,6 @@ import '../../app/app_controller.dart';
 import '../../app/app_theme.dart';
 import '../../domain/node_tree.dart';
 import '../../domain/todo_node.dart';
-import '../common/create_node_dialog.dart';
 import '../common/deadline_dialog.dart';
 import '../common/delete_confirmation_dialog.dart';
 import '../common/formatters.dart';
@@ -20,83 +19,115 @@ class EventView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!controller.eventDetailOpen) {
-      return EventBoardView(controller: controller);
-    }
     final node = controller.selectedNode;
-    if (node == null) return _EmptyEvents(controller: controller);
+    return Stack(
+      children: <Widget>[
+        Positioned.fill(child: EventBoardView(controller: controller)),
+        if (controller.eventDetailOpen && node != null)
+          Positioned(
+            key: const ValueKey<String>('event-detail-panel'),
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: 460,
+            child: _EventDetailPanel(controller: controller, node: node),
+          ),
+      ],
+    );
+  }
+}
+
+class _EventDetailPanel extends StatelessWidget {
+  const _EventDetailPanel({required this.controller, required this.node});
+
+  final AppController controller;
+  final TodoNode node;
+
+  @override
+  Widget build(BuildContext context) {
     final tree = controller.tree;
     final children = tree.childrenOf(node.id);
+    final colors = AppColors.of(context);
 
-    return Column(
-      children: <Widget>[
-        _EventHeader(controller: controller, node: node, tree: tree),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(42, 0, 42, 48),
-            children: <Widget>[
-              const SizedBox(height: 10),
-              _NotesEditor(
-                key: ValueKey<String>('notes-${node.id}'),
-                initialValue: node.notes,
-                onSaved: (value) => controller.updateNotes(node.id, value),
-              ),
-              const SizedBox(height: 26),
-              _SectionHeader(label: '子任务', count: children.length),
-              const SizedBox(height: 10),
-              if (children.isEmpty)
-                const _InlineEmpty(message: '把这件事拆成下一步行动')
-              else
-                ReorderableListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  buildDefaultDragHandles: false,
-                  itemCount: children.length,
-                  onReorderItem: (oldIndex, newIndex) {
-                    final reordered = List<TodoNode>.of(children);
-                    final moved = reordered.removeAt(oldIndex);
-                    reordered.insert(newIndex, moved);
-                    controller.reorderChildren(
-                      node.id,
-                      reordered.map((item) => item.id).toList(),
-                    );
-                  },
-                  itemBuilder: (context, index) {
-                    final child = children[index];
-                    return Padding(
-                      key: ValueKey<String>(child.id),
-                      padding: const EdgeInsets.only(bottom: 7),
-                      child: NodeTile(
-                        node: child,
-                        tree: tree,
-                        now: controller.now,
-                        onOpen: () => controller.select(child.id),
-                        onToggleComplete: (value) =>
-                            controller.setCompleted(child.id, value),
-                        trailing: ReorderableDragStartListener(
-                          index: index,
-                          child: Tooltip(
-                            message: '拖动排序',
-                            child: MouseRegion(
-                              cursor: SystemMouseCursors.grab,
-                              child: Icon(
-                                Icons.drag_indicator,
-                                size: 17,
-                                color: AppColors.of(context).muted,
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      elevation: 12,
+      shadowColor: Colors.black26,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(left: BorderSide(color: colors.border)),
+        ),
+        child: Column(
+          children: <Widget>[
+            _EventHeader(controller: controller, node: node, tree: tree),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
+                children: <Widget>[
+                  const SizedBox(height: 10),
+                  _NotesEditor(
+                    key: ValueKey<String>('notes-${node.id}'),
+                    initialValue: node.notes,
+                    onSaved: (value) => controller.updateNotes(node.id, value),
+                  ),
+                  const SizedBox(height: 26),
+                  _SectionHeader(label: '子任务', count: children.length),
+                  const SizedBox(height: 10),
+                  if (children.isEmpty)
+                    const _InlineEmpty(message: '把这件事拆成下一步行动')
+                  else
+                    ReorderableListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      buildDefaultDragHandles: false,
+                      itemCount: children.length,
+                      onReorderItem: (oldIndex, newIndex) {
+                        final reordered = List<TodoNode>.of(children);
+                        final moved = reordered.removeAt(oldIndex);
+                        reordered.insert(newIndex, moved);
+                        controller.reorderChildren(
+                          node.id,
+                          reordered.map((item) => item.id).toList(),
+                        );
+                      },
+                      itemBuilder: (context, index) {
+                        final child = children[index];
+                        return Padding(
+                          key: ValueKey<String>(child.id),
+                          padding: const EdgeInsets.only(bottom: 7),
+                          child: NodeTile(
+                            node: child,
+                            tree: tree,
+                            now: controller.now,
+                            onOpen: () => controller.select(child.id),
+                            onToggleComplete: (value) =>
+                                controller.setCompleted(child.id, value),
+                            trailing: ReorderableDragStartListener(
+                              index: index,
+                              child: Tooltip(
+                                message: '拖动排序',
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.grab,
+                                  child: Icon(
+                                    Icons.drag_indicator,
+                                    size: 17,
+                                    color: colors.muted,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              const SizedBox(height: 2),
-              _QuickAdd(controller: controller, parentId: node.id),
-            ],
-          ),
+                        );
+                      },
+                    ),
+                  const SizedBox(height: 2),
+                  _QuickAdd(controller: controller, parentId: node.id),
+                ],
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -124,15 +155,15 @@ class _EventHeader extends StatelessWidget {
     final completedAt = tree.effectiveCompletedAt(node.id);
     final path = tree.pathFor(node.id);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(42, 32, 42, 18),
+      padding: const EdgeInsets.fromLTRB(24, 20, 16, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           TextButton.icon(
             key: const ValueKey<String>('back-to-event-board'),
             onPressed: controller.showEventOverview,
-            icon: const Icon(Icons.arrow_back, size: 16),
-            label: const Text('所有事件'),
+            icon: const Icon(Icons.close, size: 16),
+            label: const Text('关闭详情'),
           ),
           const SizedBox(height: 12),
           Row(
@@ -842,51 +873,6 @@ class _InlineEmpty extends StatelessWidget {
       style: TextStyle(color: AppColors.of(context).muted, fontSize: 12),
     ),
   );
-}
-
-class _EmptyEvents extends StatelessWidget {
-  const _EmptyEvents({required this.controller});
-  final AppController controller;
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Icon(
-          Icons.account_tree_outlined,
-          size: 45,
-          color: AppColors.of(context).muted,
-        ),
-        const SizedBox(height: 14),
-        const Text(
-          '从一件想完成的事开始',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 7),
-        Text(
-          '它可以是一项任务，也可以继续拆成事件树',
-          style: TextStyle(color: AppColors.of(context).muted),
-        ),
-        const SizedBox(height: 18),
-        FilledButton.icon(
-          onPressed: () => _createRoot(context, controller),
-          icon: const Icon(Icons.add),
-          label: const Text('新建事件'),
-        ),
-      ],
-    ),
-  );
-}
-
-Future<void> _createRoot(BuildContext context, AppController controller) async {
-  final title = await showDialog<String>(
-    context: context,
-    builder: (context) => const CreateNodeDialog(),
-  );
-  if (title != null && title.trim().isNotEmpty) {
-    await controller.create(title: title);
-  }
 }
 
 Future<void> _editDeadline(

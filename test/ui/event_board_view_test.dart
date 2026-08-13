@@ -194,6 +194,14 @@ void main() {
     await tester.tap(find.byKey(ValueKey<String>('event-row-${task!.id}')));
     await tester.pumpAndSettle();
     expect(
+      find.byKey(const ValueKey<String>('event-detail-panel')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(ValueKey<String>('event-card-${root.id}')),
+      findsOneWidget,
+    );
+    expect(
       find.byKey(const ValueKey<String>('detail-notes-field')),
       findsOneWidget,
     );
