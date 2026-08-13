@@ -323,7 +323,8 @@ class _EventCardState extends State<_EventCard> {
                       final shown = visible
                           .take(EventBoardView.previewRowLimit)
                           .toList();
-                      final hiddenCount = visible.length - shown.length;
+                      final hiddenCount =
+                          tree.descendantsOf(node.id).length - shown.length;
                       return Padding(
                         padding: const EdgeInsets.fromLTRB(10, 9, 10, 4),
                         child: Column(
@@ -336,7 +337,8 @@ class _EventCardState extends State<_EventCard> {
                                 tree: tree,
                                 depth: item.depth,
                                 expanded: !collapsedIds.contains(item.node.id),
-                                onToggleExpanded: tree.isLeaf(item.node.id)
+                                onToggleExpanded:
+                                    tree.isLeaf(item.node.id) || item.depth >= 1
                                     ? null
                                     : () => setState(() {
                                         if (!collapsedIds.add(item.node.id)) {
@@ -373,7 +375,9 @@ class _EventCardState extends State<_EventCard> {
     void visit(String id, int depth) {
       for (final child in tree.childrenOf(id)) {
         result.add(_VisibleTreeNode(node: child, depth: depth));
-        if (!collapsedIds.contains(child.id)) visit(child.id, depth + 1);
+        if (depth < 1 && !collapsedIds.contains(child.id)) {
+          visit(child.id, depth + 1);
+        }
       }
     }
 
@@ -410,6 +414,7 @@ class _EventTreeRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     final children = tree.childrenOf(node.id);
+    final hiddenDescendants = tree.descendantsOf(node.id).length;
     final complete = tree.isComplete(node.id);
     return Material(
       key: ValueKey<String>('event-row-surface-${node.id}'),
@@ -425,7 +430,7 @@ class _EventTreeRow extends StatelessWidget {
             children: <Widget>[
               SizedBox(
                 width: 22,
-                child: children.isEmpty
+                child: onToggleExpanded == null
                     ? null
                     : IconButton(
                         key: ValueKey<String>('event-expand-${node.id}'),
@@ -498,6 +503,14 @@ class _EventTreeRow extends StatelessWidget {
                   formatCompactDate(node.deadline!),
                   style: TextStyle(color: colors.faint, fontSize: 9),
                 ),
+              if (children.isNotEmpty && onToggleExpanded == null) ...<Widget>[
+                const SizedBox(width: 8),
+                Text(
+                  '$hiddenDescendants 项',
+                  key: ValueKey<String>('event-nested-count-${node.id}'),
+                  style: TextStyle(color: colors.faint, fontSize: 9),
+                ),
+              ],
             ],
           ),
         ),

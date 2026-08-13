@@ -226,4 +226,52 @@ void main() {
       TextDecoration.lineThrough,
     );
   });
+
+  testWidgets('事件卡片最多预览两级任务结构', (tester) async {
+    var id = 0;
+    final controller = AppController(
+      NodeService(
+        MemoryNodeRepository(),
+        clock: () => DateTime.utc(2026, 8, 13, 9),
+        idGenerator: () => 'depth-${++id}',
+      ),
+      clock: () => DateTime(2026, 8, 13, 9),
+    );
+    await controller.load();
+    addTearDown(controller.dispose);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final root = await controller.create(title: '发布计划', selectCreated: false);
+    final first = await controller.create(
+      parentId: root!.id,
+      title: '准备阶段',
+      selectCreated: false,
+    );
+    final second = await controller.create(
+      parentId: first!.id,
+      title: '内容检查',
+      selectCreated: false,
+    );
+    await controller.create(
+      parentId: second!.id,
+      title: '检查错别字',
+      selectCreated: false,
+    );
+    controller.showEventOverview();
+
+    await tester.binding.setSurfaceSize(const Size(1100, 760));
+    await tester.pumpWidget(TodoApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    expect(find.text('准备阶段'), findsOneWidget);
+    expect(find.text('内容检查'), findsOneWidget);
+    expect(find.text('检查错别字'), findsNothing);
+    expect(
+      find.byKey(ValueKey<String>('event-nested-count-${second.id}')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(ValueKey<String>('event-expand-${second.id}')),
+      findsNothing,
+    );
+  });
 }
