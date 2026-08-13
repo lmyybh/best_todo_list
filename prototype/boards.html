@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <title>todo · 多事件分块原型</title>
+    <link rel="stylesheet" href="boards.css" />
+  </head>
+  <body>
+    <main class="stage">
+      <section class="app-window" aria-label="todo 多事件分块原型">
+        <header class="titlebar">
+          <div class="traffic-lights" aria-hidden="true">
+            <span class="traffic red"></span><span class="traffic yellow"></span><span class="traffic green"></span>
+          </div>
+          <div class="window-title">todo</div>
+          <span></span>
+        </header>
+
+        <aside class="app-rail" aria-label="应用导航">
+          <div class="rail-primary">
+            <button class="rail-button view-button active" type="button" data-view="events" aria-label="事件" title="事件（⌘1）"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h3M5 12h3M5 18h3M12 6h7M12 12h7M12 18h7"></path></svg></button>
+            <button class="rail-button view-button" type="button" data-view="timeline" aria-label="时间线" title="时间线（⌘2）"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M12 7H7a3 3 0 0 0-3 3M12 13h5a3 3 0 0 1 3 3M12 18H8"></path><circle cx="12" cy="7" r="1.5"></circle><circle cx="12" cy="13" r="1.5"></circle><circle cx="12" cy="18" r="1.5"></circle></svg></button>
+          </div>
+          <div class="rail-secondary">
+            <button class="rail-button new-event-button" type="button" aria-label="新建事件" title="新建事件"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+          </div>
+        </aside>
+
+        <div class="board-viewport view-panel events-panel">
+          <div class="board-grid">
+            <article class="event-board coral-board">
+              <header class="board-header">
+                <div class="board-title-row">
+                  <span class="board-mark coral"></span>
+                  <div class="board-heading"><h2>新版发布</h2><p>产品 · 2026 夏季版本</p></div>
+                  <button class="board-menu" type="button" aria-label="新版发布更多操作"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg></button>
+                </div>
+                <div class="board-summary">
+                  <span>5 / 9 已完成</span><span class="deadline overdue">今天截止 1 项</span>
+                </div>
+                <div class="progress"><span style="width: 56%"></span></div>
+              </header>
+
+              <div class="tree" role="tree" aria-label="新版发布任务树">
+                <div class="node branch open" data-level="0">
+                  <button class="disclosure" type="button" aria-label="折叠桌面端" aria-expanded="true"><svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"></path></svg></button>
+                  <button class="node-main" type="button"><span class="status branch-status"></span><span class="node-title">桌面端</span><span class="node-count">2/4</span></button>
+                  <div class="node-actions"><button type="button" aria-label="添加子任务" title="添加子任务">＋</button><button type="button" aria-label="更多操作">···</button></div>
+                </div>
+                <div class="children">
+                  <div class="node leaf completed" data-level="1"><span class="elbow"></span><span class="disclosure-space"></span><button class="node-main" type="button"><span class="status checked"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"></path></svg></span><span class="node-title">完成数据模型</span></button><div class="node-actions"><button type="button">···</button></div></div>
+                  <div class="node branch open selected" data-level="1">
+                    <span class="elbow"></span><button class="disclosure" type="button" aria-label="折叠交互走查" aria-expanded="true"><svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"></path></svg></button>
+                    <button class="node-main" type="button"><span class="status branch-status"></span><span class="node-title">交互走查</span><span class="node-count">1/3</span></button><div class="node-actions"><button type="button">＋</button><button type="button">···</button></div>
+                  </div>
+                  <div class="children nested">
+                    <div class="node leaf completed" data-level="2"><span class="elbow"></span><span class="disclosure-space"></span><button class="node-main" type="button"><span class="status checked"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"></path></svg></span><span class="node-title">弹窗样式统一</span></button><div class="node-actions"><button type="button">···</button></div></div>
+                    <div class="node leaf overdue-node" data-level="2"><span class="elbow"></span><span class="disclosure-space"></span><button class="node-main" type="button"><span class="status"></span><span class="node-title">窗口关闭行为</span><time>今天</time></button><div class="node-actions"><button type="button">···</button></div></div>
+                    <div class="node leaf" data-level="2"><span class="elbow"></span><span class="disclosure-space"></span><button class="node-main" type="button"><span class="status"></span><span class="node-title">键盘操作测试</span></button><div class="node-actions"><button type="button">···</button></div></div>
+                  </div>
+                  <div class="node leaf" data-level="1"><span class="elbow"></span><span class="disclosure-space"></span><button class="node-main" type="button"><span class="status"></span><span class="node-title">打包 Release</span><time>周五</time></button><div class="node-actions"><button type="button">···</button></div></div>
+                </div>
+                <div class="node branch" data-level="0"><button class="disclosure" type="button" aria-label="展开发布素材" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"></path></svg></button><button class="node-main" type="button"><span class="status branch-status"></span><span class="node-title">发布素材</span><span class="node-count">2/3</span></button><div class="node-actions"><button type="button">＋</button><button type="button">···</button></div></div>
+              </div>
+              <form class="quick-add"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg><label class="sr-only" for="add-release">添加到新版发布</label><input id="add-release" placeholder="添加到「新版发布」…" /><kbd>↵</kbd></form>
+            </article>
+
+            <article class="event-board violet-board">
+              <header class="board-header">
+                <div class="board-title-row"><span class="board-mark violet"></span><div class="board-heading"><h2>sglang</h2><p>学习与研究</p></div><button class="board-menu" type="button" aria-label="sglang 更多操作"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg></button></div>
+                <div class="board-summary"><span>3 / 8 已完成</span><span class="deadline">8 月 20 日</span></div><div class="progress"><span style="width: 38%"></span></div>
+              </header>
+              <div class="tree" role="tree" aria-label="sglang 任务树">
+                <div class="node branch open" data-level="0"><button class="disclosure" type="button" aria-expanded="true"><svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"></path></svg></button><button class="node-main" type="button"><span class="status branch-status"></span><span class="node-title">论文阅读</span><span class="node-count">1/4</span></button><div class="node-actions"><button type="button">＋</button><button type="button">···</button></div></div>
+                <div class="children">
+                  <div class="node leaf completed" data-level="1"><span class="elbow"></span><span class="disclosure-space"></span><button class="node-main" type="button"><span class="status checked"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"></path></svg></span><span class="node-title">阅读 v3</span></button><div class="node-actions"><button type="button">···</button></div></div>
+                  <div class="node branch open" data-level="1"><span class="elbow"></span><button class="disclosure" type="button" aria-expanded="true"><svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"></path></svg></button><button class="node-main" type="button"><span class="status branch-status"></span><span class="node-title">阅读 v4</span><span class="node-count">0/2</span></button><div class="node-actions"><button type="button">＋</button><button type="button">···</button></div></div>
+                  <div class="children nested">
+                    <div class="node leaf" data-level="2"><span class="elbow"></span><span class="disclosure-space"></span><button class="node-main" type="button"><span class="status"></span><span class="node-title">整理核心改动</span></button><div class="node-actions"><button type="button">···</button></div></div>
+                    <div class="node leaf" data-level="2"><span class="elbow"></span><span class="disclosure-space"></span><button class="node-main" type="button"><span class="status"></span><span class="node-title">记录疑问</span></button><div class="node-actions"><button type="button">···</button></div></div>
+                  </div>
+                  <div class="node leaf" data-level="1"><span class="elbow"></span><span class="disclosure-space"></span><button class="node-main" type="button"><span class="status"></span><span class="node-title">对比 benchmark</span><time>周日</time></button><div class="node-actions"><button type="button">···</button></div></div>
+                </div>
+                <div class="node branch" data-level="0"><button class="disclosure" type="button" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"></path></svg></button><button class="node-main" type="button"><span class="status branch-status"></span><span class="node-title">本地实验</span><span class="node-count">2/4</span></button><div class="node-actions"><button type="button">＋</button><button type="button">···</button></div></div>
+              </div>
+              <form class="quick-add"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg><label class="sr-only" for="add-sglang">添加到 sglang</label><input id="add-sglang" placeholder="添加到「sglang」…" /><kbd>↵</kbd></form>
+            </article>
+
+            <article class="event-board amber-board">
+              <header class="board-header"><div class="board-title-row"><span class="board-mark amber"></span><div class="board-heading"><h2>搬家计划</h2><p>生活 · 9 月入住</p></div><button class="board-menu" type="button" aria-label="搬家计划更多操作"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg></button></div><div class="board-summary"><span>4 / 7 已完成</span><span class="deadline">9 月 1 日</span></div><div class="progress"><span style="width: 57%"></span></div></header>
+              <div class="tree" role="tree" aria-label="搬家计划任务树">
+                <div class="node branch open" data-level="0"><button class="disclosure" type="button" aria-expanded="true"><svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"></path></svg></button><button class="node-main" type="button"><span class="status branch-status"></span><span class="node-title">找房</span><span class="node-count">2/3</span></button><div class="node-actions"><button type="button">＋</button><button type="button">···</button></div></div>
+                <div class="children">
+                  <div class="node leaf completed" data-level="1"><span class="elbow"></span><span class="disclosure-space"></span><button class="node-main" type="button"><span class="status checked"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"></path></svg></span><span class="node-title">确定通勤范围</span></button><div class="node-actions"><button type="button">···</button></div></div>
+                  <div class="node leaf completed" data-level="1"><span class="elbow"></span><span class="disclosure-space"></span><button class="node-main" type="button"><span class="status checked"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"></path></svg></span><span class="node-title">筛选房源</span></button><div class="node-actions"><button type="button">···</button></div></div>
+                  <div class="node leaf" data-level="1"><span class="elbow"></span><span class="disclosure-space"></span><button class="node-main" type="button"><span class="status"></span><span class="node-title">签合同</span><time>8/24</time></button><div class="node-actions"><button type="button">···</button></div></div>
+                </div>
+                <div class="node branch open" data-level="0"><button class="disclosure" type="button" aria-expanded="true"><svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"></path></svg></button><button class="node-main" type="button"><span class="status branch-status"></span><span class="node-title">打包</span><span class="node-count">2/4</span></button><div class="node-actions"><button type="button">＋</button><button type="button">···</button></div></div>
+                <div class="children"><div class="node leaf" data-level="1"><span class="elbow"></span><span class="disclosure-space"></span><button class="node-main" type="button"><span class="status"></span><span class="node-title">购买纸箱</span></button><div class="node-actions"><button type="button">···</button></div></div><div class="node leaf" data-level="1"><span class="elbow"></span><span class="disclosure-space"></span><button class="node-main" type="button"><span class="status"></span><span class="node-title">预约搬家公司</span></button><div class="node-actions"><button type="button">···</button></div></div></div>
+              </div>
+              <form class="quick-add"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg><label class="sr-only" for="add-move">添加到搬家计划</label><input id="add-move" placeholder="添加到「搬家计划」…" /><kbd>↵</kbd></form>
+            </article>
+
+            <button class="new-board" type="button"><span>＋</span><strong>新建事件</strong><small>添加一个并排的事件块</small></button>
+          </div>
+        </div>
+        <div class="timeline-viewport view-panel timeline-panel hidden">
+          <div class="timeline-layout">
+            <section class="timeline-feed">
+              <nav class="timeline-navigator" aria-label="选择日期">
+                <div class="calendar-toolbar">
+                  <div class="calendar-period"><strong>2026 年 8 月</strong><span>第 33 周</span></div>
+                  <div class="calendar-actions">
+                    <button class="calendar-arrow" type="button" aria-label="上一周" title="上一周"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg></button>
+                    <button class="today-button" type="button">回到今天</button>
+                    <button class="calendar-arrow" type="button" aria-label="下一周" title="下一周"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></button>
+                  </div>
+                </div>
+                <div class="date-strip" role="tablist" aria-label="本周日期">
+                  <button class="date-option active" type="button" role="tab" aria-selected="true" data-date-title="8 月 13 日 · 星期四"><span>今天</span><strong>13</strong><small>4 项</small></button>
+                  <button class="date-option" type="button" role="tab" aria-selected="false" data-date-title="8 月 14 日 · 星期五"><span>明天</span><strong>14</strong><small>2 项</small></button>
+                  <button class="date-option" type="button" role="tab" aria-selected="false" data-date-title="8 月 15 日 · 星期六"><span>周六</span><strong>15</strong><small>1 项</small></button>
+                  <button class="date-option" type="button" role="tab" aria-selected="false" data-date-title="8 月 16 日 · 星期日"><span>周日</span><strong>16</strong><small>无任务</small></button>
+                  <button class="date-option" type="button" role="tab" aria-selected="false" data-date-title="8 月 17 日 · 星期一"><span>周一</span><strong>17</strong><small>3 项</small></button>
+                  <button class="date-option" type="button" role="tab" aria-selected="false" data-date-title="8 月 18 日 · 星期二"><span>周二</span><strong>18</strong><small>1 项</small></button>
+                  <button class="date-option date-more" type="button" role="tab" aria-selected="false" data-date-title="更晚的任务"><span>更晚</span><strong><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg></strong><small>9 项</small></button>
+                </div>
+              </nav>
+              <div class="timeline-view-options"><span>8 月 13 日 · 星期四</span><label class="completed-filter"><input type="checkbox" /><span></span>显示已完成</label></div>
+              <div class="day-summary"><div><strong>4</strong><span>项待完成</span></div><div class="day-progress"><span style="width:43%"></span></div><small>今日完成 3 / 7</small></div>
+              <section class="timeline-group overdue-group">
+                <header><h2>已逾期 <span>1</span></h2><small>优先处理</small></header>
+                <article class="timeline-task overdue-task"><button class="timeline-check" type="button" aria-label="完成确认最终文案"></button><div><strong>确认最终文案</strong><p><span>已逾期 2 小时</span>新版发布</p></div><button class="task-open" type="button" aria-label="打开任务"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"></path></svg></button></article>
+              </section>
+              <section class="timeline-group">
+                <header><h2>今天 <span>3</span></h2><small>按截止时间排序</small></header>
+                <article class="timeline-task"><time>16:30</time><button class="timeline-check" type="button" aria-label="完成窗口关闭行为"></button><div><strong>窗口关闭行为</strong><p>新版发布 / 桌面端 / 交互走查</p></div><button class="task-open" type="button" aria-label="打开任务"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"></path></svg></button></article>
+                <article class="timeline-task"><time>18:00</time><button class="timeline-check" type="button" aria-label="完成签合同"></button><div><strong>签合同</strong><p>搬家计划 / 找房</p></div><button class="task-open" type="button" aria-label="打开任务"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"></path></svg></button></article>
+                <article class="timeline-task"><time>20:00</time><button class="timeline-check" type="button" aria-label="完成整理核心改动"></button><div><strong>整理核心改动</strong><p>sglang / 论文阅读 / 阅读 v4</p></div><button class="task-open" type="button" aria-label="打开任务"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"></path></svg></button></article>
+              </section>
+              <section class="timeline-group completed-time-group hidden">
+                <header><h2>已完成 <span>3</span></h2><small>保留在时间顺序中</small></header>
+                <article class="timeline-task completed"><time>10:20</time><button class="timeline-check checked" type="button"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"></path></svg></button><div><strong>完成数据模型</strong><p>新版发布 / 桌面端</p></div></article>
+              </section>
+            </section>
+          </div>
+        </div>
+        <div class="toast" role="status" aria-live="polite">已添加任务</div>
+      </section>
+    </main>
+    <script src="boards.js"></script>
+  </body>
+</html>
