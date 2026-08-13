@@ -64,4 +64,76 @@ void main() {
       greaterThan(tester.getSize(shortCard).height),
     );
   });
+
+  testWidgets('卡片内新增完成展开和菜单互不触发详情跳转', (tester) async {
+    var id = 0;
+    final controller = AppController(
+      NodeService(
+        MemoryNodeRepository(),
+        clock: () => DateTime.utc(2026, 8, 13, 9),
+        idGenerator: () => 'interaction-${++id}',
+      ),
+      clock: () => DateTime(2026, 8, 13, 9),
+    );
+    await controller.load();
+    addTearDown(controller.dispose);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final root = await controller.create(title: 'sglang', selectCreated: false);
+    final branch = await controller.create(
+      parentId: root!.id,
+      title: '论文阅读',
+      selectCreated: false,
+    );
+    final task = await controller.create(
+      parentId: branch!.id,
+      title: '阅读 v4',
+      selectCreated: false,
+    );
+    controller.showEventOverview();
+
+    await tester.binding.setSurfaceSize(const Size(1100, 760));
+    await tester.pumpWidget(TodoApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    final row = find.byKey(ValueKey<String>('event-row-${task!.id}'));
+    final surface = find.byKey(
+      ValueKey<String>('event-row-surface-${task.id}'),
+    );
+    final title = find.descendant(of: row, matching: find.text('阅读 v4'));
+    expect(tester.getSize(row).width, tester.getSize(surface).width);
+    expect(
+      (tester.getCenter(title).dy - tester.getCenter(row).dy).abs(),
+      lessThanOrEqualTo(1),
+    );
+
+    final quickAdd = find.byKey(ValueKey<String>('event-quick-add-${root.id}'));
+    await tester.enterText(quickAdd, '本地实验');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.text('本地实验'), findsOneWidget);
+    expect(controller.eventDetailOpen, isFalse);
+
+    await tester.tap(find.byKey(ValueKey<String>('event-complete-${task.id}')));
+    await tester.pumpAndSettle();
+    expect(controller.tree.isComplete(task.id), isTrue);
+    expect(find.text('阅读 v4'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.text('阅读 v4')).style?.decoration,
+      TextDecoration.lineThrough,
+    );
+    expect(controller.eventDetailOpen, isFalse);
+
+    await tester.tap(find.byKey(ValueKey<String>('event-expand-${branch.id}')));
+    await tester.pumpAndSettle();
+    expect(find.text('阅读 v4'), findsNothing);
+    await tester.tap(find.byKey(ValueKey<String>('event-expand-${branch.id}')));
+    await tester.pumpAndSettle();
+    expect(find.text('阅读 v4'), findsOneWidget);
+
+    await tester.tap(find.byKey(ValueKey<String>('event-menu-${root.id}')));
+    await tester.pumpAndSettle();
+    expect(find.text('重命名'), findsOneWidget);
+    expect(find.text('删除'), findsOneWidget);
+    expect(find.byType(MenuItemButton), findsNWidgets(2));
+  });
 }
