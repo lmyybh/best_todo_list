@@ -146,8 +146,8 @@ void main() {
     await mouse.addPointer(location: tester.getCenter(row));
     await mouse.moveTo(tester.getCenter(row));
     await tester.pump(const Duration(milliseconds: 150));
-    final hoveredSurface = tester.widget<AnimatedContainer>(surface);
-    final hoveredDecoration = hoveredSurface.decoration! as BoxDecoration;
+    final hoveredSurface = tester.widget<DecoratedBox>(surface);
+    final hoveredDecoration = hoveredSurface.decoration as BoxDecoration;
     expect(
       hoveredDecoration.color,
       AppColors.of(tester.element(row)).surfaceHover,
@@ -161,6 +161,23 @@ void main() {
       1,
     );
     expect(tester.getSize(row).width, tester.getSize(surface).width);
+    final branchRow = find.byKey(ValueKey<String>('event-row-${branch.id}'));
+    final branchSurface = find.byKey(
+      ValueKey<String>('event-row-surface-${branch.id}'),
+    );
+    await mouse.moveTo(tester.getCenter(branchRow));
+    await tester.pump();
+    expect(
+      (tester.widget<DecoratedBox>(surface).decoration as BoxDecoration).color,
+      Colors.transparent,
+    );
+    expect(
+      (tester.widget<DecoratedBox>(branchSurface).decoration as BoxDecoration)
+          .color,
+      AppColors.of(tester.element(branchRow)).surfaceHover,
+    );
+    await mouse.moveTo(tester.getCenter(row));
+    await tester.pump();
     await tester.tap(find.byKey(ValueKey<String>('event-row-menu-${task.id}')));
     await tester.pumpAndSettle();
     expect(find.text('重命名'), findsOneWidget);
@@ -185,8 +202,7 @@ void main() {
       ValueKey<String>('event-row-surface-${created.id}'),
     );
     expect(
-      (tester.widget<AnimatedContainer>(createdSurface).decoration!
-              as BoxDecoration)
+      (tester.widget<DecoratedBox>(createdSurface).decoration as BoxDecoration)
           .color,
       AppColors.of(tester.element(createdSurface)).accentSoft,
     );

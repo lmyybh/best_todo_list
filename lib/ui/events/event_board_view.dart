@@ -459,10 +459,8 @@ class _EventTreeRowState extends State<_EventTreeRow> {
     return MouseRegion(
       onEnter: (_) => setState(() => hovered = true),
       onExit: (_) => setState(() => hovered = false),
-      child: AnimatedContainer(
+      child: DecoratedBox(
         key: ValueKey<String>('event-row-surface-${node.id}'),
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOut,
         decoration: BoxDecoration(
           color: highlighted
               ? colors.accentSoft
