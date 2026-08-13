@@ -287,7 +287,7 @@ class _EventCardState extends State<_EventCard> {
                       ],
                       builder: (context, menu, _) => IconButton(
                         key: ValueKey<String>('event-menu-${node.id}'),
-                        tooltip: '更多操作',
+                        tooltip: '任务操作',
                         onPressed: menu.open,
                         visualDensity: VisualDensity.compact,
                         icon: Icon(
@@ -584,7 +584,7 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                       ],
                       builder: (context, menu, _) => IconButton(
                         key: ValueKey<String>('event-row-menu-${node.id}'),
-                        tooltip: '更多操作',
+                        tooltip: '任务操作',
                         padding: EdgeInsets.zero,
                         visualDensity: VisualDensity.compact,
                         onPressed: menu.open,

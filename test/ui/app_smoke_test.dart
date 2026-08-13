@@ -222,7 +222,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(controller.tree.isComplete(child.id), isTrue);
     expect(find.text('完成时间 2026/08/11'), findsOneWidget);
-    await tester.tap(find.byTooltip('更多操作'));
+    await tester.tap(find.byKey(const ValueKey<String>('detail-more-menu')));
     await tester.pumpAndSettle();
     expect(find.text('删除任务'), findsOneWidget);
     expect(find.text('删除事件'), findsNothing);

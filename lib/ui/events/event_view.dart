@@ -260,6 +260,7 @@ class _EventHeader extends StatelessWidget {
                 const SizedBox(width: 8),
               ],
               PopupMenuButton<String>(
+                key: const ValueKey<String>('detail-more-menu'),
                 tooltip: '更多操作',
                 icon: Icon(Icons.more_horiz, size: 19, color: colors.muted),
                 onSelected: (value) {
@@ -304,25 +305,29 @@ class _EventHeader extends StatelessWidget {
                             size: 20,
                           ),
                           const SizedBox(width: 11),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(
-                                '截止时间',
-                                style: TextStyle(
-                                  color: colors.muted,
-                                  fontSize: 10,
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  '截止时间',
+                                  style: TextStyle(
+                                    color: colors.muted,
+                                    fontSize: 10,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                formatDeadline(node.deadline),
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
+                                const SizedBox(height: 3),
+                                Text(
+                                  formatDeadline(node.deadline),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ],
                       ),
@@ -361,29 +366,33 @@ class _EventHeader extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 11),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              '整体进度',
-                              style: TextStyle(
-                                color: colors.muted,
-                                fontSize: 10,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                '整体进度',
+                                style: TextStyle(
+                                  color: colors.muted,
+                                  fontSize: 10,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              leaves.isEmpty
-                                  ? '添加子任务后汇总'
-                                  : completedCount == leaves.length
-                                  ? '已全部完成'
-                                  : '还差 ${leaves.length - completedCount} 项',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
+                              const SizedBox(height: 3),
+                              Text(
+                                leaves.isEmpty
+                                    ? '添加子任务后汇总'
+                                    : completedCount == leaves.length
+                                    ? '已全部完成'
+                                    : '还差 ${leaves.length - completedCount} 项',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ],
                     ),
