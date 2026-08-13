@@ -42,7 +42,10 @@ void main() {
     await tester.pumpWidget(TodoApp(controller: controller));
     await tester.pumpAndSettle();
 
-    expect(find.text('todo'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('create-event-navigation')),
+      findsOneWidget,
+    );
     expect(find.text('从一件想完成的事开始'), findsOneWidget);
     await tester.tap(find.widgetWithText(FilledButton, '新建事件'));
     await tester.pumpAndSettle();
@@ -239,48 +242,19 @@ void main() {
     await tester.pumpWidget(TodoApp(controller: controller));
     await tester.pumpAndSettle();
 
-    final switcherFinder = find.byType(SegmentedButton<AppView>);
-    final switcher = tester.widget<SegmentedButton<AppView>>(switcherFinder);
-    final switcherStyle = switcher.style!;
+    final eventsNavigation = find.byKey(
+      const ValueKey<String>('events-navigation'),
+    );
+    final timelineNavigation = find.byKey(
+      const ValueKey<String>('timeline-navigation'),
+    );
+    expect(eventsNavigation, findsOneWidget);
+    expect(timelineNavigation, findsOneWidget);
     expect(find.byIcon(Icons.format_list_bulleted), findsOneWidget);
-    expect(
-      switcherStyle.minimumSize?.resolve(<WidgetState>{}),
-      const Size(0, 30),
-    );
-    expect(
-      switcherStyle.mouseCursor?.resolve(<WidgetState>{WidgetState.hovered}),
-      SystemMouseCursors.click,
-    );
-    expect(
-      switcherStyle.overlayColor?.resolve(<WidgetState>{WidgetState.hovered}),
-      Colors.transparent,
-    );
-    expect(
-      switcherStyle.backgroundColor?.resolve(<WidgetState>{
-        WidgetState.hovered,
-      }),
-      Colors.transparent,
-    );
-    expect(
-      switcherStyle.backgroundColor?.resolve(<WidgetState>{
-        WidgetState.selected,
-        WidgetState.hovered,
-      }),
-      Theme.of(tester.element(switcherFinder)).colorScheme.surface,
-    );
-    expect(
-      find.ancestor(
-        of: switcherFinder,
-        matching: find.byWidgetPredicate(
-          (widget) =>
-              widget is Padding &&
-              widget.padding == const EdgeInsets.fromLTRB(16, 18, 16, 22),
-        ),
-      ),
-      findsOneWidget,
-    );
+    expect(tester.getSize(eventsNavigation), const Size(38, 38));
+    expect(tester.getCenter(eventsNavigation).dx, 27);
 
-    await tester.tap(find.text('时间线').first);
+    await tester.tap(timelineNavigation);
     await tester.pumpAndSettle();
     expect(find.text('把注意力留给眼前的事'), findsOneWidget);
     expect(find.text('有日期任务'), findsOneWidget);
@@ -312,53 +286,6 @@ void main() {
       title.style?.color,
       Theme.of(tester.element(titleFinder)).colorScheme.onSurface,
     );
-  });
-
-  testWidgets('左侧节点右键菜单只提供重命名和删除', (tester) async {
-    final node = await controller.create(title: '旧名称');
-    await tester.binding.setSurfaceSize(const Size(1100, 760));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(TodoApp(controller: controller));
-    await tester.pumpAndSettle();
-
-    final treeItem = find.widgetWithText(ListTile, '旧名称');
-    await tester.tap(treeItem, buttons: kSecondaryMouseButton);
-    await tester.pumpAndSettle();
-    expect(controller.selectedId, node!.id);
-    expect(find.text('重命名'), findsOneWidget);
-    expect(find.text('删除'), findsOneWidget);
-    expect(find.byType(MenuItemButton), findsNWidgets(2));
-
-    await tester.tap(find.text('重命名'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).last, '新名称');
-    await tester.pump();
-    await tester.tap(find.widgetWithText(FilledButton, '保存'));
-    await tester.pumpAndSettle();
-    expect(controller.nodes.single.title, '新名称');
-
-    await tester.tap(
-      find.widgetWithText(ListTile, '新名称'),
-      buttons: kSecondaryMouseButton,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('删除'));
-    await tester.pumpAndSettle();
-    final deleteButton = find.byKey(
-      const ValueKey<String>('confirm-delete-button'),
-    );
-    expect(deleteButton, findsOneWidget);
-    expect(
-      tester
-          .widget<FilledButton>(deleteButton)
-          .style
-          ?.backgroundColor
-          ?.resolve(<WidgetState>{}),
-      AppColors.of(tester.element(deleteButton)).danger,
-    );
-    await tester.tap(deleteButton);
-    await tester.pumpAndSettle();
-    expect(controller.nodes, isEmpty);
   });
 
   testWidgets('macOS 叶子任务内容在卡片内垂直居中', (tester) async {

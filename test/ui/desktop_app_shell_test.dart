@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('桌面外壳根据窗口宽度约束侧栏尺寸', (tester) async {
-    double? sidebarWidth;
+  testWidgets('桌面外壳始终使用 54 像素窄导航栏', (tester) async {
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     Future<void> pumpShell(double width) async {
@@ -12,10 +11,10 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: DesktopAppShell(
-            sidebarBuilder: (context, width) {
-              sidebarWidth = width;
-              return SizedBox(width: width);
-            },
+            navigation: const ColoredBox(
+              key: ValueKey<String>('test-navigation'),
+              color: Colors.red,
+            ),
             body: const SizedBox.expand(),
           ),
         ),
@@ -23,12 +22,27 @@ void main() {
     }
 
     await pumpShell(800);
-    expect(sidebarWidth, 220);
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey<String>('test-navigation')))
+          .width,
+      DesktopAppShell.navigationWidth,
+    );
 
     await pumpShell(1000);
-    expect(sidebarWidth, 240);
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey<String>('test-navigation')))
+          .width,
+      DesktopAppShell.navigationWidth,
+    );
 
     await pumpShell(1400);
-    expect(sidebarWidth, 258);
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey<String>('test-navigation')))
+          .width,
+      DesktopAppShell.navigationWidth,
+    );
   });
 }

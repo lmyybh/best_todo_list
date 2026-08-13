@@ -6,7 +6,7 @@ import '../app/app_controller.dart';
 import '../app/app_theme.dart';
 import 'adaptive/desktop_app_shell.dart';
 import 'events/event_view.dart';
-import 'sidebar.dart';
+import 'navigation/app_rail.dart';
 import 'timeline/timeline_view.dart';
 
 class HomeShell extends StatefulWidget {
@@ -72,8 +72,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             ),
           Expanded(
             child: DesktopAppShell(
-              sidebarBuilder: (context, width) =>
-                  AppSidebar(controller: controller, width: width),
+              navigation: AppRail(controller: controller),
               body: controller.view == AppView.events
                   ? EventView(controller: controller)
                   : TimelineView(controller: controller),

@@ -24,7 +24,6 @@ class AppController extends ChangeNotifier {
   AppView view = AppView.events;
   TimelineGroup timelineGroup = TimelineGroup.today;
   bool showCompleted = false;
-  ThemeMode themeMode = ThemeMode.system;
   final Set<String> expandedIds = <String>{};
 
   List<TodoNode> get nodes => List<TodoNode>.unmodifiable(_nodes);
@@ -89,15 +88,6 @@ class AppController extends ChangeNotifier {
 
   void toggleExpanded(String nodeId) {
     if (!expandedIds.add(nodeId)) expandedIds.remove(nodeId);
-    notifyListeners();
-  }
-
-  void cycleTheme() {
-    themeMode = switch (themeMode) {
-      ThemeMode.system => ThemeMode.light,
-      ThemeMode.light => ThemeMode.dark,
-      ThemeMode.dark => ThemeMode.system,
-    };
     notifyListeners();
   }
 

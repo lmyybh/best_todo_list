@@ -25,8 +25,7 @@ class TodoApp extends StatelessWidget {
           GlobalCupertinoLocalizations.delegate,
         ],
         theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
-        themeMode: controller.themeMode,
+        themeMode: ThemeMode.light,
         home: HomeShell(controller: controller),
       ),
     );
