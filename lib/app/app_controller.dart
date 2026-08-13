@@ -21,6 +21,10 @@ class AppController extends ChangeNotifier {
   Object? _error;
   DeletedSubtree? _lastDeletion;
   bool _eventDetailOpen = false;
+  late DateTime _selectedTimelineDate = _startOfDay(_now);
+  late DateTime _timelineWindowStart = _startOfWeek(_now);
+  bool _timelineLaterSelected = false;
+  bool _timelineWindowWasMoved = false;
 
   AppView view = AppView.events;
   TimelineGroup timelineGroup = TimelineGroup.today;
@@ -37,6 +41,26 @@ class AppController extends ChangeNotifier {
   bool get canUndoDelete => _lastDeletion != null;
   bool get eventDetailOpen => _eventDetailOpen;
   DateTime get now => _now;
+  DateTime get selectedTimelineDate => _selectedTimelineDate;
+  DateTime get timelineWindowStart => _timelineWindowStart;
+  bool get timelineLaterSelected => _timelineLaterSelected;
+  List<DateTime> get timelineDates => List<DateTime>.generate(
+    6,
+    (index) => _timelineWindowStart.add(Duration(days: index)),
+  );
+  List<TimelineEntry> get selectedDateEntries => _timelineLaterSelected
+      ? TimelineQuery(
+          _now,
+        ).laterEntries(tree, timelineDates.last, showCompleted: showCompleted)
+      : TimelineQuery(_now).entriesForDate(
+          tree,
+          _selectedTimelineDate,
+          showCompleted: showCompleted,
+          includeOverdue: _sameDate(_selectedTimelineDate, _now),
+        );
+
+  int timelineCount(DateTime date) =>
+      TimelineQuery(_now).countForDate(tree, date);
 
   List<TimelineEntry> get timelineEntries => TimelineQuery(
     _now,
@@ -50,6 +74,11 @@ class AppController extends ChangeNotifier {
         next.day != _now.day;
     final timezoneChanged = next.timeZoneOffset != _now.timeZoneOffset;
     _now = next;
+    if (dateChanged && !_timelineWindowWasMoved) {
+      _selectedTimelineDate = _startOfDay(next);
+      _timelineWindowStart = _startOfWeek(next);
+      _timelineLaterSelected = false;
+    }
     if (dateChanged || timezoneChanged) notifyListeners();
   }
 
@@ -91,6 +120,33 @@ class AppController extends ChangeNotifier {
 
   void setShowCompleted(bool value) {
     showCompleted = value;
+    notifyListeners();
+  }
+
+  void selectTimelineDate(DateTime date) {
+    _selectedTimelineDate = _startOfDay(date);
+    _timelineLaterSelected = false;
+    notifyListeners();
+  }
+
+  void selectTimelineLater() {
+    _timelineLaterSelected = true;
+    notifyListeners();
+  }
+
+  void shiftTimelineWindow(int weeks) {
+    _timelineWindowStart = _timelineWindowStart.add(Duration(days: weeks * 7));
+    _selectedTimelineDate = _timelineWindowStart;
+    _timelineLaterSelected = false;
+    _timelineWindowWasMoved = true;
+    notifyListeners();
+  }
+
+  void resetTimelineToToday() {
+    _selectedTimelineDate = _startOfDay(_now);
+    _timelineWindowStart = _startOfWeek(_now);
+    _timelineLaterSelected = false;
+    _timelineWindowWasMoved = false;
     notifyListeners();
   }
 
@@ -195,4 +251,13 @@ class AppController extends ChangeNotifier {
     service.repository.close();
     super.dispose();
   }
+
+  static DateTime _startOfDay(DateTime date) =>
+      DateTime(date.year, date.month, date.day);
+
+  static DateTime _startOfWeek(DateTime date) =>
+      _startOfDay(date).subtract(Duration(days: date.weekday - 1));
+
+  static bool _sameDate(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 }

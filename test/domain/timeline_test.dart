@@ -77,4 +77,58 @@ void main() {
     ).entries(tree, TimelineGroup.other, showCompleted: true);
     expect(shown.map((entry) => entry.node.id), <String>['new', 'old']);
   });
+
+  test('按自然日查询并只在需要时包含逾期', () {
+    final tree = NodeTree(<TodoNode>[
+      node('overdue', deadline: DateTime(2026, 8, 10, 18)),
+      node('today', deadline: DateTime(2026, 8, 11, 18)),
+      node('tomorrow', deadline: DateTime(2026, 8, 12, 9)),
+    ]);
+    final query = TimelineQuery(now);
+    expect(
+      query.entriesForDate(tree, DateTime(2026, 8, 11)).map((e) => e.node.id),
+      <String>['today'],
+    );
+    expect(
+      query
+          .entriesForDate(tree, DateTime(2026, 8, 11), includeOverdue: true)
+          .map((e) => e.node.id),
+      <String>['overdue', 'today'],
+    );
+  });
+
+  test('更晚查询包含窗口之后和无日期任务', () {
+    final tree = NodeTree(<TodoNode>[
+      node('inside', deadline: DateTime(2026, 8, 15)),
+      node('later', deadline: DateTime(2026, 8, 16)),
+      node('none'),
+    ]);
+    final result = TimelineQuery(now).laterEntries(tree, DateTime(2026, 8, 15));
+    expect(result.map((entry) => entry.node.id), <String>['later', 'none']);
+  });
+
+  test('按日查询跨月跨年且保持稳定排序', () {
+    final newYear = DateTime(2026, 12, 31, 12);
+    final tree = NodeTree(<TodoNode>[
+      node('b', deadline: DateTime(2027, 1, 1, 9)),
+      node('a', deadline: DateTime(2027, 1, 1, 9)),
+      node('old-year', deadline: DateTime(2026, 12, 31, 23)),
+    ]);
+    final result = TimelineQuery(
+      newYear,
+    ).entriesForDate(tree, DateTime(2027, 1, 1));
+    expect(result.map((entry) => entry.node.id), <String>['a', 'b']);
+  });
+
+  test('按日计数默认不包含已完成任务', () {
+    final tree = NodeTree(<TodoNode>[
+      node('open', deadline: DateTime(2026, 8, 11, 9)),
+      node(
+        'done',
+        deadline: DateTime(2026, 8, 11, 10),
+        completedAt: DateTime.utc(2026, 8, 11, 10),
+      ),
+    ]);
+    expect(TimelineQuery(now).countForDate(tree, now), 1);
+  });
 }

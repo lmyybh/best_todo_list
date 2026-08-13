@@ -24,25 +24,57 @@ class TimelineQuery {
 
   final DateTime now;
 
+  List<TimelineEntry> entriesForDate(
+    NodeTree tree,
+    DateTime date, {
+    bool showCompleted = false,
+    bool includeOverdue = false,
+  }) {
+    final target = _startOfDay(date);
+    final result = _visibleEntries(tree, showCompleted: showCompleted).where((
+      entry,
+    ) {
+      final deadline = entry.node.deadline?.toLocal();
+      if (deadline == null) return false;
+      return _sameDate(deadline, target) ||
+          (includeOverdue && deadline.isBefore(target));
+    }).toList();
+    _sortEntries(
+      result,
+      showCompleted: showCompleted,
+      overdueBefore: includeOverdue ? target : null,
+    );
+    return result;
+  }
+
+  List<TimelineEntry> laterEntries(
+    NodeTree tree,
+    DateTime after, {
+    bool showCompleted = false,
+  }) {
+    final boundary = _startOfDay(after).add(const Duration(days: 1));
+    final result = _visibleEntries(tree, showCompleted: showCompleted).where((
+      entry,
+    ) {
+      final deadline = entry.node.deadline?.toLocal();
+      return deadline == null || !deadline.isBefore(boundary);
+    }).toList();
+    _sortEntries(result, showCompleted: showCompleted);
+    return result;
+  }
+
+  int countForDate(NodeTree tree, DateTime date) =>
+      entriesForDate(tree, date).length;
+
   List<TimelineEntry> entries(
     NodeTree tree,
     TimelineGroup group, {
     bool showCompleted = false,
   }) {
-    final entries = tree.nodes.values
-        .where((node) => tree.isLeaf(node.id) || node.deadline != null)
-        .map(
-          (node) => TimelineEntry(
-            node: node,
-            path: tree.pathFor(node.id),
-            isEvent: !tree.isLeaf(node.id),
-            isComplete: tree.isComplete(node.id),
-            completedAt: tree.effectiveCompletedAt(node.id),
-          ),
-        )
-        .where((entry) => showCompleted || !entry.isComplete)
-        .where((entry) => _belongsTo(entry.node, group))
-        .toList();
+    final entries = _visibleEntries(
+      tree,
+      showCompleted: showCompleted,
+    ).where((entry) => _belongsTo(entry.node, group)).toList();
 
     entries.sort((a, b) {
       if (showCompleted && a.isComplete != b.isComplete) {
@@ -63,6 +95,44 @@ class TimelineQuery {
       return _deadlineComparator(a.node, b.node);
     });
     return entries;
+  }
+
+  List<TimelineEntry> _visibleEntries(
+    NodeTree tree, {
+    required bool showCompleted,
+  }) => tree.nodes.values
+      .where((node) => tree.isLeaf(node.id) || node.deadline != null)
+      .map(
+        (node) => TimelineEntry(
+          node: node,
+          path: tree.pathFor(node.id),
+          isEvent: !tree.isLeaf(node.id),
+          isComplete: tree.isComplete(node.id),
+          completedAt: tree.effectiveCompletedAt(node.id),
+        ),
+      )
+      .where((entry) => showCompleted || !entry.isComplete)
+      .toList();
+
+  void _sortEntries(
+    List<TimelineEntry> entries, {
+    required bool showCompleted,
+    DateTime? overdueBefore,
+  }) {
+    entries.sort((a, b) {
+      if (showCompleted && a.isComplete != b.isComplete) {
+        return a.isComplete ? 1 : -1;
+      }
+      if (a.isComplete && b.isComplete) {
+        return b.completedAt!.compareTo(a.completedAt!);
+      }
+      if (overdueBefore != null) {
+        final aOverdue = a.node.deadline!.toLocal().isBefore(overdueBefore);
+        final bOverdue = b.node.deadline!.toLocal().isBefore(overdueBefore);
+        if (aOverdue != bOverdue) return aOverdue ? -1 : 1;
+      }
+      return _deadlineComparator(a.node, b.node);
+    });
   }
 
   bool _belongsTo(TodoNode node, TimelineGroup group) {
