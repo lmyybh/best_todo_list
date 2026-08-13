@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/app_theme.dart';
@@ -184,6 +187,22 @@ class _EventCard extends StatefulWidget {
 
 class _EventCardState extends State<_EventCard> {
   final Set<String> collapsedIds = <String>{};
+  Timer? highlightTimer;
+  String? highlightedId;
+
+  @override
+  void dispose() {
+    highlightTimer?.cancel();
+    super.dispose();
+  }
+
+  void highlightCreated(String nodeId) {
+    highlightTimer?.cancel();
+    setState(() => highlightedId = nodeId);
+    highlightTimer = Timer(const Duration(milliseconds: 900), () {
+      if (mounted) setState(() => highlightedId = null);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -337,6 +356,7 @@ class _EventCardState extends State<_EventCard> {
                                 tree: tree,
                                 depth: item.depth,
                                 expanded: !collapsedIds.contains(item.node.id),
+                                highlighted: highlightedId == item.node.id,
                                 onToggleExpanded:
                                     tree.isLeaf(item.node.id) || item.depth >= 1
                                     ? null
@@ -363,7 +383,11 @@ class _EventCardState extends State<_EventCard> {
                     },
                   ),
           ),
-          _CardQuickAdd(controller: controller, parentId: node.id),
+          _CardQuickAdd(
+            controller: controller,
+            parentId: node.id,
+            onCreated: highlightCreated,
+          ),
         ],
       ),
     );
@@ -400,6 +424,7 @@ class _EventTreeRow extends StatefulWidget {
     required this.tree,
     required this.depth,
     required this.expanded,
+    required this.highlighted,
     required this.onToggleExpanded,
   });
 
@@ -408,6 +433,7 @@ class _EventTreeRow extends StatefulWidget {
   final NodeTree tree;
   final int depth;
   final bool expanded;
+  final bool highlighted;
   final VoidCallback? onToggleExpanded;
 
   @override
@@ -425,6 +451,7 @@ class _EventTreeRowState extends State<_EventTreeRow> {
     final tree = widget.tree;
     final depth = widget.depth;
     final expanded = widget.expanded;
+    final highlighted = widget.highlighted;
     final onToggleExpanded = widget.onToggleExpanded;
     final children = tree.childrenOf(node.id);
     final hiddenDescendants = tree.descendantsOf(node.id).length;
@@ -437,7 +464,11 @@ class _EventTreeRowState extends State<_EventTreeRow> {
         duration: const Duration(milliseconds: 120),
         curve: Curves.easeOut,
         decoration: BoxDecoration(
-          color: hovered ? colors.surfaceHover : Colors.transparent,
+          color: highlighted
+              ? colors.accentSoft
+              : hovered
+              ? colors.surfaceHover
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
         ),
         child: SizedBox(
@@ -576,10 +607,15 @@ class _EventTreeRowState extends State<_EventTreeRow> {
 }
 
 class _CardQuickAdd extends StatefulWidget {
-  const _CardQuickAdd({required this.controller, required this.parentId});
+  const _CardQuickAdd({
+    required this.controller,
+    required this.parentId,
+    required this.onCreated,
+  });
 
   final AppController controller;
   final String parentId;
+  final ValueChanged<String> onCreated;
 
   @override
   State<_CardQuickAdd> createState() => _CardQuickAddState();
@@ -587,9 +623,32 @@ class _CardQuickAdd extends StatefulWidget {
 
 class _CardQuickAddState extends State<_CardQuickAdd> {
   final TextEditingController textController = TextEditingController();
+  late final FocusNode focusNode = FocusNode()..addListener(_handleFocusChange);
+  bool expanded = false;
+
+  void _handleFocusChange() {
+    if (!focusNode.hasFocus && textController.text.trim().isEmpty && expanded) {
+      setState(() => expanded = false);
+    }
+  }
+
+  void open() {
+    setState(() => expanded = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) focusNode.requestFocus();
+    });
+  }
+
+  void close() {
+    textController.clear();
+    focusNode.unfocus();
+    if (expanded) setState(() => expanded = false);
+  }
 
   @override
   void dispose() {
+    focusNode.removeListener(_handleFocusChange);
+    focusNode.dispose();
     textController.dispose();
     super.dispose();
   }
@@ -597,13 +656,14 @@ class _CardQuickAddState extends State<_CardQuickAdd> {
   Future<void> submit() async {
     final title = textController.text.trim();
     if (title.isEmpty) return;
-    await widget.controller.create(
+    final created = await widget.controller.create(
       parentId: widget.parentId,
       title: title,
       selectCreated: false,
     );
     textController.clear();
-    widget.controller.showEventOverview();
+    if (created != null) widget.onCreated(created.id);
+    if (mounted) focusNode.requestFocus();
   }
 
   @override
@@ -611,23 +671,55 @@ class _CardQuickAddState extends State<_CardQuickAdd> {
     final colors = AppColors.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(11, 0, 11, 12),
-      child: TextField(
-        key: ValueKey<String>('event-quick-add-${widget.parentId}'),
-        controller: textController,
-        onSubmitted: (_) => submit(),
-        textInputAction: TextInputAction.done,
-        style: const TextStyle(fontSize: 11),
-        decoration: InputDecoration(
-          hintText: '添加子任务…',
-          prefixIcon: const Icon(Icons.add, size: 16),
-          suffixText: '↵',
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(vertical: 10),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(9),
-            borderSide: BorderSide(color: colors.border),
-          ),
-        ),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 150),
+        child: expanded
+            ? Focus(
+                onKeyEvent: (_, event) {
+                  if (event is KeyDownEvent &&
+                      event.logicalKey == LogicalKeyboardKey.escape) {
+                    close();
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                },
+                child: TextField(
+                  key: ValueKey<String>('event-quick-add-${widget.parentId}'),
+                  controller: textController,
+                  focusNode: focusNode,
+                  onSubmitted: (_) => submit(),
+                  textInputAction: TextInputAction.done,
+                  style: const TextStyle(fontSize: 11),
+                  decoration: InputDecoration(
+                    hintText: '添加子任务…',
+                    prefixIcon: const Icon(Icons.add, size: 16),
+                    suffixText: '↵',
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(9),
+                      borderSide: BorderSide(color: colors.border),
+                    ),
+                  ),
+                ),
+              )
+            : Align(
+                key: const ValueKey<String>('quick-add-collapsed'),
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: ValueKey<String>(
+                    'event-quick-add-trigger-${widget.parentId}',
+                  ),
+                  onPressed: open,
+                  style: TextButton.styleFrom(
+                    foregroundColor: colors.muted,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('添加任务', style: TextStyle(fontSize: 11)),
+                ),
+              ),
       ),
     );
   }

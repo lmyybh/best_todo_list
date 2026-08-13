@@ -3,8 +3,9 @@ import 'package:best_todo_list/app/app_controller.dart';
 import 'package:best_todo_list/app/app_theme.dart';
 import 'package:best_todo_list/domain/node_service.dart';
 import 'package:best_todo_list/ui/events/event_board_view.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/memory_node_repository.dart';
@@ -168,11 +169,31 @@ void main() {
     await tester.pumpAndSettle();
 
     final quickAdd = find.byKey(ValueKey<String>('event-quick-add-${root.id}'));
+    expect(quickAdd, findsNothing);
+    await tester.tap(
+      find.byKey(ValueKey<String>('event-quick-add-trigger-${root.id}')),
+    );
+    await tester.pumpAndSettle();
+    expect(quickAdd, findsOneWidget);
     await tester.enterText(quickAdd, '本地实验');
     await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
+    await tester.pump();
     expect(find.text('本地实验'), findsOneWidget);
     expect(controller.eventDetailOpen, isFalse);
+    final created = controller.tree.childrenOf(root.id).last;
+    final createdSurface = find.byKey(
+      ValueKey<String>('event-row-surface-${created.id}'),
+    );
+    expect(
+      (tester.widget<AnimatedContainer>(createdSurface).decoration!
+              as BoxDecoration)
+          .color,
+      AppColors.of(tester.element(createdSurface)).accentSoft,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(quickAdd, findsNothing);
 
     await tester.tap(find.byKey(ValueKey<String>('event-complete-${task.id}')));
     await tester.pumpAndSettle();
