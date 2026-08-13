@@ -1,8 +1,10 @@
 import 'package:best_todo_list/app/app.dart';
 import 'package:best_todo_list/app/app_controller.dart';
+import 'package:best_todo_list/app/app_theme.dart';
 import 'package:best_todo_list/domain/node_service.dart';
 import 'package:best_todo_list/ui/events/event_board_view.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/memory_node_repository.dart';
@@ -138,6 +140,32 @@ void main() {
     await tester.tapAt(tester.getTopRight(row) - const Offset(2, -18));
     await tester.pumpAndSettle();
     expect(controller.eventDetailOpen, isFalse);
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: tester.getCenter(row));
+    await mouse.moveTo(tester.getCenter(row));
+    await tester.pump(const Duration(milliseconds: 150));
+    final hoveredSurface = tester.widget<AnimatedContainer>(surface);
+    final hoveredDecoration = hoveredSurface.decoration! as BoxDecoration;
+    expect(
+      hoveredDecoration.color,
+      AppColors.of(tester.element(row)).surfaceHover,
+    );
+    expect(
+      tester
+          .widget<AnimatedOpacity>(
+            find.byKey(ValueKey<String>('event-row-actions-${task.id}')),
+          )
+          .opacity,
+      1,
+    );
+    expect(tester.getSize(row).width, tester.getSize(surface).width);
+    await tester.tap(find.byKey(ValueKey<String>('event-row-menu-${task.id}')));
+    await tester.pumpAndSettle();
+    expect(find.text('重命名'), findsOneWidget);
+    expect(find.text('删除'), findsOneWidget);
+    await tester.tapAt(const Offset(900, 700));
+    await tester.pumpAndSettle();
 
     final quickAdd = find.byKey(ValueKey<String>('event-quick-add-${root.id}'));
     await tester.enterText(quickAdd, '本地实验');
