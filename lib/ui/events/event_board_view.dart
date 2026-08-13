@@ -152,14 +152,19 @@ class _EventCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Text(
-                            node.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              height: 1.25,
-                              fontWeight: FontWeight.w700,
+                          InkWell(
+                            key: ValueKey<String>('event-title-${node.id}'),
+                            mouseCursor: SystemMouseCursors.click,
+                            onTap: () => controller.select(node.id),
+                            child: Text(
+                              node.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                height: 1.25,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 4),

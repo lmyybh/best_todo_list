@@ -136,4 +136,51 @@ void main() {
     expect(find.text('删除'), findsOneWidget);
     expect(find.byType(MenuItemButton), findsNWidgets(2));
   });
+
+  testWidgets('事件总览进入详情修改后可以返回并同步状态', (tester) async {
+    var id = 0;
+    final controller = AppController(
+      NodeService(
+        MemoryNodeRepository(),
+        clock: () => DateTime.utc(2026, 8, 13, 9),
+        idGenerator: () => 'detail-${++id}',
+      ),
+      clock: () => DateTime(2026, 8, 13, 9),
+    );
+    await controller.load();
+    addTearDown(controller.dispose);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final root = await controller.create(title: '发布计划', selectCreated: false);
+    final task = await controller.create(
+      parentId: root!.id,
+      title: '确认文案',
+      selectCreated: false,
+    );
+    controller.showEventOverview();
+    await tester.binding.setSurfaceSize(const Size(1100, 760));
+    await tester.pumpWidget(TodoApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(ValueKey<String>('event-row-${task!.id}')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('detail-notes-field')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('detail-completion-toggle')),
+    );
+    await tester.pumpAndSettle();
+    expect(controller.tree.isComplete(task.id), isTrue);
+    await tester.tap(find.byKey(const ValueKey<String>('back-to-event-board')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(ValueKey<String>('event-card-${root.id}')),
+      findsOneWidget,
+    );
+    expect(
+      tester.widget<Text>(find.text('确认文案')).style?.decoration,
+      TextDecoration.lineThrough,
+    );
+  });
 }

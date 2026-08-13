@@ -128,6 +128,13 @@ class _EventHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
+          TextButton.icon(
+            key: const ValueKey<String>('back-to-event-board'),
+            onPressed: controller.showEventOverview,
+            icon: const Icon(Icons.arrow_back, size: 16),
+            label: const Text('所有事件'),
+          ),
+          const SizedBox(height: 12),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
