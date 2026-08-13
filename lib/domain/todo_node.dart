@@ -5,6 +5,7 @@ class TodoNode {
     required this.createdAt,
     required this.updatedAt,
     required this.manualOrder,
+    this.notes = '',
     this.parentId,
     this.deadline,
     this.completedAt,
@@ -14,6 +15,7 @@ class TodoNode {
   final String id;
   final String? parentId;
   final String title;
+  final String notes;
   final DateTime? deadline;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -27,6 +29,7 @@ class TodoNode {
     String? parentId,
     bool clearParentId = false,
     String? title,
+    String? notes,
     DateTime? deadline,
     bool clearDeadline = false,
     DateTime? createdAt,
@@ -41,6 +44,7 @@ class TodoNode {
       id: id,
       parentId: clearParentId ? null : (parentId ?? this.parentId),
       title: title ?? this.title,
+      notes: notes ?? this.notes,
       deadline: clearDeadline ? null : (deadline ?? this.deadline),
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -54,6 +58,7 @@ class TodoNode {
     'id': id,
     'parent_id': parentId,
     'title': title,
+    'notes': notes,
     'deadline': deadline?.toUtc().millisecondsSinceEpoch,
     'created_at': createdAt.toUtc().millisecondsSinceEpoch,
     'updated_at': updatedAt.toUtc().millisecondsSinceEpoch,
@@ -74,6 +79,7 @@ class TodoNode {
       id: map['id']! as String,
       parentId: map['parent_id'] as String?,
       title: map['title']! as String,
+      notes: map['notes'] as String? ?? '',
       deadline: nullableDate('deadline'),
       createdAt: nullableDate('created_at')!,
       updatedAt: nullableDate('updated_at')!,

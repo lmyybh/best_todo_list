@@ -120,6 +120,9 @@ class AppController extends ChangeNotifier {
   Future<void> updateTitle(String nodeId, String title) =>
       _write(() => service.updateTitle(nodeId, title));
 
+  Future<void> updateNotes(String nodeId, String notes) =>
+      _write(() => service.updateNotes(nodeId, notes));
+
   Future<void> updateDeadline(String nodeId, DateTime? deadline) =>
       _write(() => service.updateDeadline(nodeId, deadline));
 

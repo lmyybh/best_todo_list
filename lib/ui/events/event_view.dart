@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/app_controller.dart';
@@ -29,6 +31,12 @@ class EventView extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(42, 0, 42, 48),
             children: <Widget>[
+              const SizedBox(height: 10),
+              _NotesEditor(
+                key: ValueKey<String>('notes-${node.id}'),
+                initialValue: node.notes,
+                onSaved: (value) => controller.updateNotes(node.id, value),
+              ),
               const SizedBox(height: 26),
               _SectionHeader(label: '子任务', count: children.length),
               const SizedBox(height: 10),
@@ -468,6 +476,146 @@ class _EditableTitleState extends State<_EditableTitle> {
       ),
     ),
   );
+}
+
+class _NotesEditor extends StatefulWidget {
+  const _NotesEditor({
+    required this.initialValue,
+    required this.onSaved,
+    super.key,
+  });
+
+  final String initialValue;
+  final Future<void> Function(String value) onSaved;
+
+  @override
+  State<_NotesEditor> createState() => _NotesEditorState();
+}
+
+class _NotesEditorState extends State<_NotesEditor> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initialValue,
+  );
+  late final FocusNode _focusNode = FocusNode()
+    ..addListener(_handleFocusChanged);
+  Timer? _saveTimer;
+  late String _savedValue = widget.initialValue;
+  bool _focused = false;
+  bool _saving = false;
+
+  void _handleFocusChanged() {
+    if (_focused != _focusNode.hasFocus) {
+      setState(() => _focused = _focusNode.hasFocus);
+    }
+    if (!_focusNode.hasFocus) unawaited(_save());
+  }
+
+  void _scheduleSave() {
+    _saveTimer?.cancel();
+    if (!_saving) setState(() => _saving = true);
+    _saveTimer = Timer(const Duration(milliseconds: 600), _save);
+  }
+
+  Future<void> _save() async {
+    _saveTimer?.cancel();
+    final value = _controller.text;
+    if (value == _savedValue) {
+      if (_saving && mounted) setState(() => _saving = false);
+      return;
+    }
+    await widget.onSaved(value);
+    _savedValue = value;
+    if (mounted) setState(() => _saving = false);
+  }
+
+  @override
+  void dispose() {
+    _saveTimer?.cancel();
+    if (_controller.text != _savedValue) {
+      unawaited(widget.onSaved(_controller.text));
+    }
+    _focusNode.removeListener(_handleFocusChanged);
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final accent = Theme.of(context).colorScheme.primary;
+    return Semantics(
+      textField: true,
+      label: '任务备注',
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.fromLTRB(15, 12, 15, 14),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          border: Border.all(
+            color: _focused ? accent : colors.border,
+            width: _focused ? 1.5 : 1,
+          ),
+          borderRadius: BorderRadius.circular(11),
+          boxShadow: _focused
+              ? <BoxShadow>[
+                  BoxShadow(
+                    color: accent.withValues(alpha: 0.08),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(Icons.notes_rounded, size: 16, color: accent),
+                const SizedBox(width: 7),
+                const Text(
+                  '备注',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                const Spacer(),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 150),
+                  child: Text(
+                    _saving ? '保存中…' : '已保存',
+                    key: ValueKey<bool>(_saving),
+                    style: TextStyle(color: colors.faint, fontSize: 10),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              key: const ValueKey<String>('detail-notes-field'),
+              controller: _controller,
+              focusNode: _focusNode,
+              minLines: 3,
+              maxLines: 8,
+              keyboardType: TextInputType.multiline,
+              textInputAction: TextInputAction.newline,
+              onChanged: (_) => _scheduleSave(),
+              style: const TextStyle(fontSize: 12.5, height: 1.55),
+              decoration: InputDecoration(
+                isDense: true,
+                filled: false,
+                hintText: '记录想法、背景或下一步要点…',
+                hintStyle: TextStyle(color: colors.faint),
+                contentPadding: EdgeInsets.zero,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _QuickAdd extends StatefulWidget {

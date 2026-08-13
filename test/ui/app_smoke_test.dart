@@ -69,6 +69,14 @@ void main() {
       AppColors.of(tester.element(breadcrumb)).faint,
     );
     expect(find.text('手动排序'), findsOneWidget);
+    expect(find.text('备注'), findsOneWidget);
+    final notesField = find.byKey(const ValueKey<String>('detail-notes-field'));
+    expect(notesField, findsOneWidget);
+    await tester.enterText(notesField, '发布前确认回滚方案');
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+    expect(controller.selectedNode!.notes, '发布前确认回滚方案');
+    expect(find.text('已保存'), findsOneWidget);
     final quickAdd = find.widgetWithText(TextField, '添加一个子任务…');
     expect(quickAdd, findsOneWidget);
     final quickAddDecoration = tester.widget<TextField>(quickAdd).decoration!;

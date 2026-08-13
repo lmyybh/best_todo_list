@@ -28,6 +28,15 @@ void main() {
     );
   });
 
+  test('备注可更新并保留原始换行', () async {
+    final task = await service.createNode(title: '任务');
+    await service.updateNotes(task.id, '第一行\n第二行');
+
+    final saved = (await service.loadNodes()).single;
+    expect(saved.notes, '第一行\n第二行');
+    expect(saved.updatedAt, now);
+  });
+
   test('创建任意层级节点并按 manualOrder 追加', () async {
     final root = await service.createNode(title: ' 根事件 ');
     final first = await service.createNode(parentId: root.id, title: '第一步');

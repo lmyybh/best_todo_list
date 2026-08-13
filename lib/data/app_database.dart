@@ -11,7 +11,7 @@ class AppDatabase {
     return factory.openDatabase(
       databasePath,
       options: OpenDatabaseOptions(
-        version: 1,
+        version: 2,
         onConfigure: (database) async {
           await database.execute('PRAGMA foreign_keys = ON');
         },
@@ -21,6 +21,7 @@ class AppDatabase {
               id TEXT PRIMARY KEY,
               parent_id TEXT NULL,
               title TEXT NOT NULL,
+              notes TEXT NOT NULL DEFAULT '',
               deadline INTEGER NULL,
               created_at INTEGER NOT NULL,
               updated_at INTEGER NOT NULL,
@@ -42,6 +43,13 @@ class AppDatabase {
           await database.execute(
             'CREATE INDEX nodes_created_idx ON nodes(created_at, deleted_at)',
           );
+        },
+        onUpgrade: (database, oldVersion, newVersion) async {
+          if (oldVersion < 2) {
+            await database.execute(
+              "ALTER TABLE nodes ADD COLUMN notes TEXT NOT NULL DEFAULT ''",
+            );
+          }
         },
       ),
     );

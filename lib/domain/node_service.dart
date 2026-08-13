@@ -79,6 +79,13 @@ class NodeService {
     );
   }
 
+  Future<void> updateNotes(String nodeId, String notes) async {
+    final node = await _requireNode(nodeId);
+    await repository.updateNode(
+      node.copyWith(notes: notes, updatedAt: clock().toUtc()),
+    );
+  }
+
   Future<void> updateDeadline(String nodeId, DateTime? deadline) async {
     final node = await _requireNode(nodeId);
     await repository.updateNode(
