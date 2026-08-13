@@ -11,6 +11,7 @@ import '../common/deadline_dialog.dart';
 import '../common/delete_confirmation_dialog.dart';
 import '../common/formatters.dart';
 import '../common/node_tile.dart';
+import 'event_board_view.dart';
 
 class EventView extends StatelessWidget {
   const EventView({required this.controller, super.key});
@@ -19,6 +20,9 @@ class EventView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!controller.eventDetailOpen) {
+      return EventBoardView(controller: controller);
+    }
     final node = controller.selectedNode;
     if (node == null) return _EmptyEvents(controller: controller);
     final tree = controller.tree;

@@ -20,6 +20,7 @@ class AppController extends ChangeNotifier {
   bool _loading = true;
   Object? _error;
   DeletedSubtree? _lastDeletion;
+  bool _eventDetailOpen = false;
 
   AppView view = AppView.events;
   TimelineGroup timelineGroup = TimelineGroup.today;
@@ -34,6 +35,7 @@ class AppController extends ChangeNotifier {
   TodoNode? get selectedNode =>
       _selectedId == null ? null : tree.nodes[_selectedId];
   bool get canUndoDelete => _lastDeletion != null;
+  bool get eventDetailOpen => _eventDetailOpen;
   DateTime get now => _now;
 
   List<TimelineEntry> get timelineEntries => TimelineQuery(
@@ -68,6 +70,12 @@ class AppController extends ChangeNotifier {
 
   void select(String nodeId) {
     _selectedId = nodeId;
+    _eventDetailOpen = true;
+    notifyListeners();
+  }
+
+  void showEventOverview() {
+    _eventDetailOpen = false;
     notifyListeners();
   }
 
@@ -103,7 +111,10 @@ class AppController extends ChangeNotifier {
       deadline: deadline,
     );
     if (parentId != null) expandedIds.add(parentId);
-    if (selectCreated) _selectedId = node.id;
+    if (selectCreated) {
+      _selectedId = node.id;
+      _eventDetailOpen = true;
+    }
     return node;
   });
 

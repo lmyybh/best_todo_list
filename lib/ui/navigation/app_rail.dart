@@ -63,7 +63,8 @@ class AppRail extends StatelessWidget {
       builder: (context) => const CreateNodeDialog(),
     );
     if (title == null || title.trim().isEmpty) return;
-    await controller.create(title: title);
+    await controller.create(title: title, selectCreated: false);
+    controller.showEventOverview();
     controller.setView(AppView.events);
   }
 }

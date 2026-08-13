@@ -14,6 +14,11 @@ String formatDate(DateTime value) {
   return '${local.year}/${_two(local.month)}/${_two(local.day)}';
 }
 
+String formatCompactDate(DateTime value) {
+  final local = value.toLocal();
+  return '${local.month}/${local.day}';
+}
+
 bool isOverdue(DateTime? deadline, DateTime now) =>
     deadline != null &&
     deadline.toLocal().isBefore(now) &&
