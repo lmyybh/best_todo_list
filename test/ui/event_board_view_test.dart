@@ -111,33 +111,34 @@ void main() {
       lessThan(tester.getCenter(firstTitle).dx),
     );
     final thirdCard = find.byKey(ValueKey<String>('event-card-${roots[2]}'));
+    final firstPosition = tester.getTopLeft(firstCard);
+    final secondPosition = tester.getTopLeft(firstRowPeer);
+    final thirdPosition = tester.getTopLeft(thirdCard);
     final cardDrag = await tester.startGesture(tester.getCenter(dragHandle));
     await cardDrag.moveBy(const Offset(5, 0));
-    await cardDrag.moveTo(tester.getCenter(thirdCard));
-    await tester.pump(const Duration(milliseconds: 130));
+    await cardDrag.moveTo(
+      tester.getCenter(thirdCard) +
+          Offset(tester.getSize(thirdCard).width / 4, 0),
+    );
+    await cardDrag.moveBy(const Offset(1, 0));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 180));
     expect(
       tester
           .widget<AnimatedOpacity>(
             find.byKey(ValueKey<String>('event-drag-source-${roots.first}')),
           )
           .opacity,
-      0.42,
+      0.16,
     );
-    final targetSurface = tester.widget<AnimatedContainer>(
-      find.byKey(ValueKey<String>('event-card-surface-${roots[2]}')),
-    );
-    final targetForeground =
-        targetSurface.foregroundDecoration as BoxDecoration;
-    expect(targetForeground.border!.top.width, 3);
-    expect(
-      targetForeground.border!.top.color,
-      Theme.of(tester.element(thirdCard)).colorScheme.primary,
-    );
+    expect(tester.getTopLeft(firstRowPeer), firstPosition);
+    expect(tester.getTopLeft(thirdCard), secondPosition);
+    expect(tester.getTopLeft(firstCard), thirdPosition);
     await cardDrag.up();
     await tester.pumpAndSettle();
     expect(
       controller.tree.childrenOf(null).take(3).map((node) => node.id),
-      <String>[roots[1], roots.first, roots[2]],
+      <String>[roots[1], roots[2], roots.first],
     );
     expect(
       find.byKey(ValueKey<String>('event-more-${roots.first}')),

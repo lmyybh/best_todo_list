@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -11,7 +12,7 @@ import '../common/create_node_dialog.dart';
 import '../common/delete_confirmation_dialog.dart';
 import '../common/formatters.dart';
 
-class EventBoardView extends StatelessWidget {
+class EventBoardView extends StatefulWidget {
   const EventBoardView({required this.controller, super.key});
 
   final AppController controller;
@@ -25,25 +26,71 @@ class EventBoardView extends StatelessWidget {
   static const double spacing = 16;
 
   @override
+  State<EventBoardView> createState() => _EventBoardViewState();
+}
+
+class _EventBoardViewState extends State<EventBoardView> {
+  final GlobalKey boardKey = GlobalKey();
+  String? draggedEventId;
+  List<String>? previewRootIds;
+
+  @override
   Widget build(BuildContext context) {
-    final roots = controller.tree.childrenOf(null);
+    final roots = widget.controller.tree.childrenOf(null);
+    final rootsById = <String, TodoNode>{
+      for (final root in roots) root.id: root,
+    };
+    final rootIds = roots.map((root) => root.id).toList();
+    final previewIds = previewRootIds;
+    final orderedIds =
+        previewIds != null &&
+            previewIds.length == rootIds.length &&
+            previewIds.every(rootsById.containsKey)
+        ? previewIds
+        : rootIds;
+    final orderedRoots = orderedIds.map((id) => rootsById[id]!).toList();
     return LayoutBuilder(
       builder: (context, constraints) {
         final horizontalPadding = constraints.maxWidth < 760 ? 18.0 : 22.0;
         final availableWidth = constraints.maxWidth - horizontalPadding * 2;
-        final columns = ((availableWidth + spacing) / (cardWidth + spacing))
-            .floor()
-            .clamp(1, 4);
+        final columns =
+            ((availableWidth + EventBoardView.spacing) /
+                    (EventBoardView.cardWidth + EventBoardView.spacing))
+                .floor()
+                .clamp(1, 4);
         final resolvedWidth =
-            ((availableWidth - spacing * (columns - 1)) / columns)
-                .clamp(minimumCardWidth, cardWidth)
+            ((availableWidth - EventBoardView.spacing * (columns - 1)) /
+                    columns)
+                .clamp(
+                  EventBoardView.minimumCardWidth,
+                  EventBoardView.cardWidth,
+                )
                 .toDouble();
 
-        final items = <TodoNode?>[...roots, null];
-        final rows = <List<TodoNode?>>[
-          for (var start = 0; start < items.length; start += columns)
-            items.sublist(start, (start + columns).clamp(0, items.length)),
-        ];
+        final items = <TodoNode?>[...orderedRoots, null];
+        final rowHeights = <double>[];
+        for (var start = 0; start < items.length; start += columns) {
+          final row = items.sublist(
+            start,
+            (start + columns).clamp(0, items.length),
+          );
+          rowHeights.add(
+            row.whereType<TodoNode>().fold<double>(
+              EventBoardView.minimumCardHeight,
+              (height, node) =>
+                  height > _preferredCardHeight(widget.controller.tree, node)
+                  ? height
+                  : _preferredCardHeight(widget.controller.tree, node),
+            ),
+          );
+        }
+        final rowOffsets = <double>[];
+        var totalHeight = 0.0;
+        for (final height in rowHeights) {
+          rowOffsets.add(totalHeight);
+          totalHeight += height + EventBoardView.spacing;
+        }
+        if (rowHeights.isNotEmpty) totalHeight -= EventBoardView.spacing;
 
         return SingleChildScrollView(
           key: const ValueKey<String>('event-board-scroll'),
@@ -55,31 +102,151 @@ class EventBoardView extends StatelessWidget {
           ),
           child: roots.isEmpty
               ? _EmptyBoard(onCreate: () => _createEvent(context))
-              : Column(
+              : SizedBox(
                   key: const ValueKey<String>('event-board-wrap'),
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    for (
-                      var rowIndex = 0;
-                      rowIndex < rows.length;
-                      rowIndex++
-                    ) ...<Widget>[
-                      _EventCardRow(
-                        key: ValueKey<String>('event-card-row-$rowIndex'),
-                        items: rows[rowIndex],
-                        allRoots: roots,
-                        controller: controller,
-                        width: resolvedWidth,
-                        onCreate: () => _createEvent(context),
-                      ),
-                      if (rowIndex < rows.length - 1)
-                        const SizedBox(height: spacing),
+                  height: totalHeight,
+                  child: Stack(
+                    key: boardKey,
+                    children: <Widget>[
+                      for (var index = 0; index < items.length; index++)
+                        _buildPositionedItem(
+                          context: context,
+                          item: items[index],
+                          allRoots: roots,
+                          index: index,
+                          columns: columns,
+                          width: resolvedWidth,
+                          height: rowHeights[index ~/ columns],
+                          left:
+                              (index % columns) *
+                              (resolvedWidth + EventBoardView.spacing),
+                          top: rowOffsets[index ~/ columns],
+                        ),
                     ],
-                  ],
+                  ),
                 ),
         );
       },
     );
+  }
+
+  Widget _buildPositionedItem({
+    required BuildContext context,
+    required TodoNode? item,
+    required List<TodoNode> allRoots,
+    required int index,
+    required int columns,
+    required double width,
+    required double height,
+    required double left,
+    required double top,
+  }) {
+    final child = item == null
+        ? DragTarget<String>(
+            onWillAcceptWithDetails: (_) => true,
+            onMove: (_) => _previewAtEnd(),
+            onAcceptWithDetails: (_) => _commitPreviewOrder(),
+            builder: (context, candidates, _) => _NewEventCard(
+              onPressed: () => _createEvent(context),
+              dropTargeted: candidates.isNotEmpty,
+            ),
+          )
+        : DragTarget<String>(
+            onWillAcceptWithDetails: (details) {
+              if (details.data == item.id) return false;
+              _previewAround(item.id, after: false);
+              return true;
+            },
+            onMove: (details) {
+              final renderObject =
+                  boardKey.currentContext?.findRenderObject() as RenderBox?;
+              if (renderObject == null) return;
+              final local = renderObject.globalToLocal(details.offset);
+              final after = columns == 1
+                  ? local.dy > top + height / 2
+                  : local.dx > left + width / 2;
+              _previewAround(item.id, after: after);
+            },
+            onAcceptWithDetails: (_) => _commitPreviewOrder(),
+            builder: (context, candidates, _) => _EventCard(
+              controller: widget.controller,
+              node: item,
+              tree: widget.controller.tree,
+              now: widget.controller.now,
+              color:
+                  _eventColors[allRoots.indexWhere(
+                        (root) => root.id == item.id,
+                      ) %
+                      _eventColors.length],
+              dropTargeted: candidates.isNotEmpty,
+              onDragStarted: () => _startDragging(item.id, allRoots),
+              onDragEnd: _endDragging,
+            ),
+          );
+
+    return AnimatedPositioned(
+      key: ValueKey<String>('event-layout-${item?.id ?? 'new'}'),
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutCubic,
+      left: left,
+      top: top,
+      width: width,
+      height: height,
+      child: KeyedSubtree(
+        key: item == null
+            ? const ValueKey<String>('new-event-card')
+            : ValueKey<String>('event-card-${item.id}'),
+        child: child,
+      ),
+    );
+  }
+
+  void _startDragging(String id, List<TodoNode> roots) {
+    setState(() {
+      draggedEventId = id;
+      previewRootIds = roots.map((root) => root.id).toList();
+    });
+  }
+
+  void _previewAround(String targetId, {required bool after}) {
+    final draggedId = draggedEventId;
+    final current = previewRootIds;
+    if (draggedId == null || current == null || draggedId == targetId) return;
+    final next = List<String>.of(current)..remove(draggedId);
+    final targetIndex = next.indexOf(targetId);
+    if (targetIndex < 0) return;
+    next.insert(targetIndex + (after ? 1 : 0), draggedId);
+    if (!listEquals(next, current)) setState(() => previewRootIds = next);
+  }
+
+  void _previewAtEnd() {
+    final draggedId = draggedEventId;
+    final current = previewRootIds;
+    if (draggedId == null || current == null) return;
+    final next = List<String>.of(current)
+      ..remove(draggedId)
+      ..add(draggedId);
+    if (!listEquals(next, current)) setState(() => previewRootIds = next);
+  }
+
+  void _commitPreviewOrder() {
+    final orderedIds = previewRootIds;
+    if (orderedIds != null) {
+      unawaited(widget.controller.reorderChildren(null, orderedIds));
+    }
+    _clearDragging();
+  }
+
+  void _endDragging(DraggableDetails details) {
+    if (!details.wasAccepted) _clearDragging();
+  }
+
+  void _clearDragging() {
+    if (!mounted) return;
+    setState(() {
+      draggedEventId = null;
+      previewRootIds = null;
+    });
   }
 
   Future<void> _createEvent(BuildContext context) async {
@@ -88,78 +255,8 @@ class EventBoardView extends StatelessWidget {
       builder: (context) => const CreateNodeDialog(),
     );
     if (title == null || title.trim().isEmpty) return;
-    await controller.create(title: title, selectCreated: false);
-    controller.showEventOverview();
-  }
-}
-
-class _EventCardRow extends StatelessWidget {
-  const _EventCardRow({
-    required this.items,
-    required this.allRoots,
-    required this.controller,
-    required this.width,
-    required this.onCreate,
-    super.key,
-  });
-
-  final List<TodoNode?> items;
-  final List<TodoNode> allRoots;
-  final AppController controller;
-  final double width;
-  final VoidCallback onCreate;
-
-  @override
-  Widget build(BuildContext context) {
-    final tree = controller.tree;
-    final height = items.whereType<TodoNode>().fold<double>(
-      EventBoardView.minimumCardHeight,
-      (current, node) => current > _preferredCardHeight(tree, node)
-          ? current
-          : _preferredCardHeight(tree, node),
-    );
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        for (var index = 0; index < items.length; index++) ...<Widget>[
-          if (index > 0) const SizedBox(width: EventBoardView.spacing),
-          SizedBox(
-            key: items[index] == null
-                ? const ValueKey<String>('new-event-card')
-                : ValueKey<String>('event-card-${items[index]!.id}'),
-            width: width,
-            height: height,
-            child: items[index] == null
-                ? _NewEventCard(onPressed: onCreate)
-                : DragTarget<String>(
-                    onWillAcceptWithDetails: (details) =>
-                        details.data != items[index]!.id,
-                    onAcceptWithDetails: (details) {
-                      final orderedIds = allRoots
-                          .map((root) => root.id)
-                          .toList();
-                      orderedIds.remove(details.data);
-                      orderedIds.insert(
-                        orderedIds.indexOf(items[index]!.id),
-                        details.data,
-                      );
-                      unawaited(controller.reorderChildren(null, orderedIds));
-                    },
-                    builder: (context, candidates, _) => _EventCard(
-                      controller: controller,
-                      node: items[index]!,
-                      tree: tree,
-                      now: controller.now,
-                      color:
-                          _eventColors[allRoots.indexOf(items[index]!) %
-                              _eventColors.length],
-                      dropTargeted: candidates.isNotEmpty,
-                    ),
-                  ),
-          ),
-        ],
-      ],
-    );
+    await widget.controller.create(title: title, selectCreated: false);
+    widget.controller.showEventOverview();
   }
 }
 
@@ -191,6 +288,8 @@ class _EventCard extends StatefulWidget {
     required this.now,
     required this.color,
     required this.dropTargeted,
+    required this.onDragStarted,
+    required this.onDragEnd,
   });
 
   final AppController controller;
@@ -199,6 +298,8 @@ class _EventCard extends StatefulWidget {
   final DateTime now;
   final Color color;
   final bool dropTargeted;
+  final VoidCallback onDragStarted;
+  final ValueChanged<DraggableDetails> onDragEnd;
 
   @override
   State<_EventCard> createState() => _EventCardState();
@@ -240,6 +341,69 @@ class _EventCardState extends State<_EventCard> {
     final completed = leaves.where((leaf) => leaf.completedAt != null).length;
     final progress = leaves.isEmpty ? 0.0 : completed / leaves.length;
     final children = tree.childrenOf(node.id);
+    Widget dragRegion() => MouseRegion(
+      cursor: SystemMouseCursors.grab,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            key: ValueKey<String>('event-drag-${node.id}'),
+            width: 22,
+            height: 24,
+            child: AnimatedOpacity(
+              opacity: cardHovered || cardDragging ? 1 : 0.55,
+              duration: const Duration(milliseconds: 100),
+              child: Tooltip(
+                message: '拖动事件排序',
+                child: Icon(
+                  Icons.drag_indicator,
+                  size: 18,
+                  color: colors.muted,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 7),
+          Container(
+            width: 10,
+            height: 10,
+            margin: const EdgeInsets.only(top: 4),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                InkWell(
+                  key: ValueKey<String>('event-title-${node.id}'),
+                  mouseCursor: SystemMouseCursors.click,
+                  onTap: () => controller.select(node.id),
+                  child: Text(
+                    node.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      height: 1.25,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  children.isEmpty ? '单项任务' : '${children.length} 个直接子任务',
+                  style: TextStyle(color: colors.faint, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
     return MouseRegion(
       onEnter: (_) => setState(() => cardHovered = true),
       onExit: (_) => setState(() => cardHovered = false),
@@ -269,20 +433,9 @@ class _EventCardState extends State<_EventCard> {
                 ]
               : const <BoxShadow>[],
         ),
-        foregroundDecoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(13),
-          border: Border(
-            top: BorderSide(
-              color: dropTargeted
-                  ? Theme.of(context).colorScheme.primary
-                  : Colors.transparent,
-              width: 3,
-            ),
-          ),
-        ),
         child: AnimatedOpacity(
           key: ValueKey<String>('event-drag-source-${node.id}'),
-          opacity: cardDragging ? 0.42 : 1,
+          opacity: cardDragging ? 0.16 : 1,
           duration: const Duration(milliseconds: 100),
           curve: Curves.easeOut,
           child: Material(
@@ -308,134 +461,73 @@ class _EventCardState extends State<_EventCard> {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          SizedBox(
-                            width: 22,
-                            height: 24,
-                            child: AnimatedOpacity(
-                              opacity: cardHovered || cardDragging ? 1 : 0,
-                              duration: const Duration(milliseconds: 100),
-                              child: IgnorePointer(
-                                ignoring: !cardHovered && !cardDragging,
-                                child: Draggable<String>(
-                                  key: ValueKey<String>(
-                                    'event-drag-${node.id}',
-                                  ),
-                                  data: node.id,
-                                  rootOverlay: true,
-                                  dragAnchorStrategy: pointerDragAnchorStrategy,
-                                  onDragStarted: () =>
-                                      setState(() => cardDragging = true),
-                                  onDragEnd: (_) =>
-                                      setState(() => cardDragging = false),
-                                  feedback: Material(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.surface,
-                                    elevation: 10,
-                                    shadowColor: Colors.black26,
-                                    borderRadius: BorderRadius.circular(11),
-                                    child: ConstrainedBox(
-                                      constraints: const BoxConstraints(
-                                        minWidth: 210,
-                                        maxWidth: 260,
-                                      ),
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 14,
-                                          vertical: 11,
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: <Widget>[
-                                            Container(
-                                              width: 9,
-                                              height: 9,
-                                              decoration: BoxDecoration(
-                                                color: color,
-                                                borderRadius:
-                                                    BorderRadius.circular(3),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 9),
-                                            Flexible(
-                                              child: Text(
-                                                node.title,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
+                          Expanded(
+                            child: Draggable<String>(
+                              key: ValueKey<String>(
+                                'event-drag-region-${node.id}',
+                              ),
+                              data: node.id,
+                              rootOverlay: true,
+                              dragAnchorStrategy: pointerDragAnchorStrategy,
+                              onDragStarted: () {
+                                setState(() => cardDragging = true);
+                                widget.onDragStarted();
+                              },
+                              onDragEnd: (details) {
+                                if (mounted) {
+                                  setState(() => cardDragging = false);
+                                }
+                                widget.onDragEnd(details);
+                              },
+                              feedback: Material(
+                                color: Theme.of(context).colorScheme.surface,
+                                elevation: 12,
+                                shadowColor: Colors.black26,
+                                borderRadius: BorderRadius.circular(13),
+                                child: SizedBox(
+                                  width: 280,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 13,
                                     ),
-                                  ),
-                                  childWhenDragging: Icon(
-                                    Icons.drag_indicator,
-                                    size: 18,
-                                    color: colors.faint,
-                                  ),
-                                  child: Tooltip(
-                                    message: '拖动事件排序',
-                                    child: MouseRegion(
-                                      cursor: SystemMouseCursors.grab,
-                                      child: Icon(
-                                        Icons.drag_indicator,
-                                        size: 18,
-                                        color: colors.muted,
-                                      ),
+                                    child: Row(
+                                      children: <Widget>[
+                                        Icon(
+                                          Icons.drag_indicator,
+                                          size: 18,
+                                          color: colors.muted,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          width: 9,
+                                          height: 9,
+                                          decoration: BoxDecoration(
+                                            color: color,
+                                            borderRadius: BorderRadius.circular(
+                                              3,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            node.title,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(width: 7),
-                          Container(
-                            width: 10,
-                            height: 10,
-                            margin: const EdgeInsets.only(top: 4),
-                            decoration: BoxDecoration(
-                              color: color,
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                InkWell(
-                                  key: ValueKey<String>(
-                                    'event-title-${node.id}',
-                                  ),
-                                  mouseCursor: SystemMouseCursors.click,
-                                  onTap: () => controller.select(node.id),
-                                  child: Text(
-                                    node.title,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      height: 1.25,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  children.isEmpty
-                                      ? '单项任务'
-                                      : '${children.length} 个直接子任务',
-                                  style: TextStyle(
-                                    color: colors.faint,
-                                    fontSize: 10,
-                                  ),
-                                ),
-                              ],
+                              childWhenDragging: dragRegion(),
+                              child: dragRegion(),
                             ),
                           ),
                           MenuAnchor(
@@ -1120,9 +1212,10 @@ class _DeadlineLabel extends StatelessWidget {
 }
 
 class _NewEventCard extends StatelessWidget {
-  const _NewEventCard({required this.onPressed});
+  const _NewEventCard({required this.onPressed, this.dropTargeted = false});
 
   final VoidCallback onPressed;
+  final bool dropTargeted;
 
   @override
   Widget build(BuildContext context) {
@@ -1131,7 +1224,15 @@ class _NewEventCard extends StatelessWidget {
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
         foregroundColor: colors.muted,
-        side: BorderSide(color: colors.border),
+        backgroundColor: dropTargeted
+            ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.06)
+            : null,
+        side: BorderSide(
+          color: dropTargeted
+              ? Theme.of(context).colorScheme.primary
+              : colors.border,
+          width: dropTargeted ? 2 : 1,
+        ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
       ),
       child: const Column(
