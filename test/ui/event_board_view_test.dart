@@ -89,13 +89,24 @@ void main() {
     );
     expect(
       find.byKey(ValueKey<String>('event-more-${roots.first}')),
-      findsOneWidget,
-    );
-    expect(find.text('还有 3 项任务'), findsOneWidget);
-    expect(
-      find.byKey(ValueKey<String>('event-tree-scroll-${roots.first}')),
       findsNothing,
     );
+    expect(find.text('还有 3 项任务'), findsNothing);
+    final taskScroll = find.byKey(
+      ValueKey<String>('event-tree-scroll-${roots.first}'),
+    );
+    expect(taskScroll, findsOneWidget);
+    expect(
+      find.byKey(ValueKey<String>('event-tree-scrollbar-${roots.first}')),
+      findsOneWidget,
+    );
+    final scrollable = tester.state<ScrollableState>(
+      find.descendant(of: taskScroll, matching: find.byType(Scrollable)),
+    );
+    expect(scrollable.position.maxScrollExtent, greaterThan(0));
+    await tester.drag(taskScroll, const Offset(0, -500));
+    await tester.pumpAndSettle();
+    expect(find.text('任务 7'), findsOneWidget);
   });
 
   testWidgets('卡片内新增完成展开和菜单互不触发详情跳转', (tester) async {

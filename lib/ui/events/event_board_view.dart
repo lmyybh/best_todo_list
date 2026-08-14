@@ -187,12 +187,14 @@ class _EventCard extends StatefulWidget {
 
 class _EventCardState extends State<_EventCard> {
   final Set<String> collapsedIds = <String>{};
+  final ScrollController treeScrollController = ScrollController();
   Timer? highlightTimer;
   String? highlightedId;
 
   @override
   void dispose() {
     highlightTimer?.cancel();
+    treeScrollController.dispose();
     super.dispose();
   }
 
@@ -339,45 +341,39 @@ class _EventCardState extends State<_EventCard> {
                 : Builder(
                     builder: (context) {
                       final visible = _flattenVisibleTree(tree, node.id);
-                      final shown = visible
-                          .take(EventBoardView.previewRowLimit)
-                          .toList();
-                      final hiddenCount =
-                          tree.descendantsOf(node.id).length - shown.length;
-                      return Padding(
-                        padding: const EdgeInsets.fromLTRB(10, 9, 10, 4),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            for (final item in shown)
-                              _EventTreeRow(
-                                controller: controller,
-                                node: item.node,
-                                tree: tree,
-                                depth: item.depth,
-                                expanded: !collapsedIds.contains(item.node.id),
-                                highlighted: highlightedId == item.node.id,
-                                onToggleExpanded:
-                                    tree.isLeaf(item.node.id) || item.depth >= 1
-                                    ? null
-                                    : () => setState(() {
-                                        if (!collapsedIds.add(item.node.id)) {
-                                          collapsedIds.remove(item.node.id);
-                                        }
-                                      }),
-                              ),
-                            if (hiddenCount > 0)
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: TextButton(
-                                  key: ValueKey<String>(
-                                    'event-more-${node.id}',
-                                  ),
-                                  onPressed: () => controller.select(node.id),
-                                  child: Text('还有 $hiddenCount 项任务'),
-                                ),
-                              ),
-                          ],
+                      return Scrollbar(
+                        key: ValueKey<String>(
+                          'event-tree-scrollbar-${node.id}',
+                        ),
+                        controller: treeScrollController,
+                        thumbVisibility: true,
+                        interactive: true,
+                        radius: const Radius.circular(4),
+                        child: ListView.builder(
+                          key: ValueKey<String>('event-tree-scroll-${node.id}'),
+                          controller: treeScrollController,
+                          padding: const EdgeInsets.fromLTRB(10, 9, 16, 4),
+                          itemCount: visible.length,
+                          itemExtent: 36,
+                          itemBuilder: (context, index) {
+                            final item = visible[index];
+                            return _EventTreeRow(
+                              controller: controller,
+                              node: item.node,
+                              tree: tree,
+                              depth: item.depth,
+                              expanded: !collapsedIds.contains(item.node.id),
+                              highlighted: highlightedId == item.node.id,
+                              onToggleExpanded:
+                                  tree.isLeaf(item.node.id) || item.depth >= 1
+                                  ? null
+                                  : () => setState(() {
+                                      if (!collapsedIds.add(item.node.id)) {
+                                        collapsedIds.remove(item.node.id);
+                                      }
+                                    }),
+                            );
+                          },
                         ),
                       );
                     },
