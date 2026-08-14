@@ -441,6 +441,99 @@ void main() {
       greaterThan(firstTop),
     );
     expect(controller.eventDetailOpen, isFalse);
+
+    final cancelDrag = await tester.startGesture(
+      tester.getCenter(
+        find.byKey(ValueKey<String>('event-task-drag-${first.id}')),
+      ),
+    );
+    await cancelDrag.moveBy(const Offset(0, -40));
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    await cancelDrag.up();
+    await tester.pumpAndSettle();
+    expect(controller.tree.childrenOf(root.id).map((node) => node.id), <String>[
+      second.id,
+      first.id,
+    ]);
+
+    await tester.tap(find.byKey(ValueKey<String>('event-row-${first.id}')));
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pumpAndSettle();
+    expect(controller.tree.childrenOf(root.id).map((node) => node.id), <String>[
+      first.id,
+      second.id,
+    ]);
+  });
+
+  testWidgets('事件拖动支持边缘滚动、Esc 取消和键盘排序', (tester) async {
+    var id = 0;
+    final controller = AppController(
+      NodeService(
+        MemoryNodeRepository(),
+        clock: () => DateTime.utc(2026, 8, 13, 9),
+        idGenerator: () => 'drag-a11y-${++id}',
+      ),
+      clock: () => DateTime(2026, 8, 13, 9),
+    );
+    await controller.load();
+    addTearDown(controller.dispose);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final roots = <String>[];
+    for (var index = 0; index < 8; index++) {
+      final root = await controller.create(
+        title: '事件 $index',
+        selectCreated: false,
+      );
+      roots.add(root!.id);
+    }
+    controller.showEventOverview();
+
+    await tester.binding.setSurfaceSize(const Size(720, 600));
+    await tester.pumpWidget(TodoApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    final firstHandle = find.byKey(
+      ValueKey<String>('event-drag-${roots.first}'),
+    );
+    await tester.tap(firstHandle);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pumpAndSettle();
+    expect(
+      controller.tree.childrenOf(null).take(2).map((node) => node.id),
+      <String>[roots[1], roots.first],
+    );
+
+    final reorderedHandle = find.byKey(
+      ValueKey<String>('event-drag-${roots.first}'),
+    );
+    final drag = await tester.startGesture(tester.getCenter(reorderedHandle));
+    await drag.moveBy(const Offset(0, 20));
+    await drag.moveTo(const Offset(350, 590));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    final boardScrollable = tester.state<ScrollableState>(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('event-board-scroll')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    expect(boardScrollable.position.pixels, greaterThan(0));
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 180));
+    await drag.up();
+    await tester.pumpAndSettle();
+    expect(controller.tree.childrenOf(null).map((node) => node.id), <String>[
+      roots[1],
+      roots.first,
+      ...roots.skip(2),
+    ]);
   });
 
   testWidgets('子任务 hover 后可以直接新建它的子任务', (tester) async {
