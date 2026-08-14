@@ -22,7 +22,16 @@ class EventView extends StatelessWidget {
     final node = controller.selectedNode;
     return Stack(
       children: <Widget>[
-        Positioned.fill(child: EventBoardView(controller: controller)),
+        Positioned.fill(
+          child: GestureDetector(
+            key: const ValueKey<String>('event-detail-dismiss-layer'),
+            behavior: HitTestBehavior.translucent,
+            onTap: controller.eventDetailOpen
+                ? controller.showEventOverview
+                : null,
+            child: EventBoardView(controller: controller),
+          ),
+        ),
         if (controller.eventDetailOpen && node != null)
           Positioned(
             key: const ValueKey<String>('event-detail-panel'),

@@ -319,8 +319,16 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(controller.tree.isComplete(task.id), isTrue);
-    await tester.tap(find.byKey(const ValueKey<String>('back-to-event-board')));
+    expect(
+      find.byKey(const ValueKey<String>('event-detail-panel')),
+      findsOneWidget,
+    );
+    await tester.tapAt(const Offset(300, 700));
     await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('event-detail-panel')),
+      findsNothing,
+    );
     expect(
       find.byKey(ValueKey<String>('event-card-${root.id}')),
       findsOneWidget,
