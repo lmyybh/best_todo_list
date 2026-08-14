@@ -390,6 +390,11 @@ void main() {
       title: '第二步',
       selectCreated: false,
     );
+    final secondChild = await controller.create(
+      parentId: second!.id,
+      title: '第二步的子任务',
+      selectCreated: false,
+    );
     controller.showEventOverview();
 
     await tester.binding.setSurfaceSize(const Size(1100, 760));
@@ -397,7 +402,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final firstRow = find.byKey(ValueKey<String>('event-row-${first!.id}'));
-    final secondRow = find.byKey(ValueKey<String>('event-row-${second!.id}'));
+    final secondRow = find.byKey(ValueKey<String>('event-row-${second.id}'));
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
     addTearDown(mouse.removePointer);
     await mouse.addPointer(location: tester.getCenter(secondRow));
@@ -411,26 +416,14 @@ void main() {
       tester.getCenter(handle).dx,
       lessThan(tester.getCenter(completion).dx),
     );
+    final firstTop = tester.getTopLeft(firstRow).dy;
+    final secondTop = tester.getTopLeft(secondRow).dy;
     final taskDrag = await tester.startGesture(tester.getCenter(handle));
-    await taskDrag.moveBy(const Offset(5, 0));
+    await taskDrag.moveBy(const Offset(0, -8));
     await taskDrag.moveTo(tester.getCenter(firstRow));
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(
-      tester
-          .widget<AnimatedOpacity>(
-            find.byKey(ValueKey<String>('event-task-drag-source-${second.id}')),
-          )
-          .opacity,
-      0.38,
-    );
-    expect(
-      tester
-          .widget<AnimatedOpacity>(
-            find.byKey(ValueKey<String>('event-task-drop-${first.id}')),
-          )
-          .opacity,
-      1,
-    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.getTopLeft(firstRow).dy, greaterThan(secondTop));
     await taskDrag.up();
     await tester.pumpAndSettle();
 
@@ -438,6 +431,15 @@ void main() {
       second.id,
       first.id,
     ]);
+    expect(controller.tree.nodes[secondChild!.id]?.parentId, second.id);
+    expect(
+      tester
+          .getTopLeft(
+            find.byKey(ValueKey<String>('event-row-${secondChild.id}')),
+          )
+          .dy,
+      greaterThan(firstTop),
+    );
     expect(controller.eventDetailOpen, isFalse);
   });
 
