@@ -100,6 +100,19 @@ void main() {
     final hoveredDecoration = hoveredCard.decoration as BoxDecoration;
     expect(hoveredDecoration.boxShadow, isNotEmpty);
     expect(tester.getSize(firstCard), cardSizeBeforeHover);
+    final dragHandle = find.byKey(
+      ValueKey<String>('event-drag-${roots.first}'),
+    );
+    final thirdCard = find.byKey(ValueKey<String>('event-card-${roots[2]}'));
+    await tester.drag(
+      dragHandle,
+      tester.getCenter(thirdCard) - tester.getCenter(dragHandle),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      controller.tree.childrenOf(null).take(3).map((node) => node.id),
+      <String>[roots[1], roots.first, roots[2]],
+    );
     expect(
       find.byKey(ValueKey<String>('event-more-${roots.first}')),
       findsNothing,

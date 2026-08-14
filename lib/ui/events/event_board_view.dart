@@ -131,14 +131,30 @@ class _EventCardRow extends StatelessWidget {
             height: height,
             child: items[index] == null
                 ? _NewEventCard(onPressed: onCreate)
-                : _EventCard(
-                    controller: controller,
-                    node: items[index]!,
-                    tree: tree,
-                    now: controller.now,
-                    color:
-                        _eventColors[allRoots.indexOf(items[index]!) %
-                            _eventColors.length],
+                : DragTarget<String>(
+                    onWillAcceptWithDetails: (details) =>
+                        details.data != items[index]!.id,
+                    onAcceptWithDetails: (details) {
+                      final orderedIds = allRoots
+                          .map((root) => root.id)
+                          .toList();
+                      orderedIds.remove(details.data);
+                      orderedIds.insert(
+                        orderedIds.indexOf(items[index]!.id),
+                        details.data,
+                      );
+                      unawaited(controller.reorderChildren(null, orderedIds));
+                    },
+                    builder: (context, candidates, _) => _EventCard(
+                      controller: controller,
+                      node: items[index]!,
+                      tree: tree,
+                      now: controller.now,
+                      color:
+                          _eventColors[allRoots.indexOf(items[index]!) %
+                              _eventColors.length],
+                      dropTargeted: candidates.isNotEmpty,
+                    ),
                   ),
           ),
         ],
@@ -174,6 +190,7 @@ class _EventCard extends StatefulWidget {
     required this.tree,
     required this.now,
     required this.color,
+    required this.dropTargeted,
   });
 
   final AppController controller;
@@ -181,6 +198,7 @@ class _EventCard extends StatefulWidget {
   final NodeTree tree;
   final DateTime now;
   final Color color;
+  final bool dropTargeted;
 
   @override
   State<_EventCard> createState() => _EventCardState();
@@ -215,6 +233,7 @@ class _EventCardState extends State<_EventCard> {
     final tree = widget.tree;
     final now = widget.now;
     final color = widget.color;
+    final dropTargeted = widget.dropTargeted;
     final colors = AppColors.of(context);
     final leaves = tree.leafDescendantsOf(node.id);
     final completed = leaves.where((leaf) => leaf.completedAt != null).length;
@@ -244,7 +263,9 @@ class _EventCardState extends State<_EventCard> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(13),
             side: BorderSide(
-              color: cardHovered
+              color: dropTargeted
+                  ? Theme.of(context).colorScheme.primary
+                  : cardHovered
                   ? color.withValues(alpha: 0.72)
                   : colors.border,
             ),
@@ -302,6 +323,54 @@ class _EventCardState extends State<_EventCard> {
                             ],
                           ),
                         ),
+                        AnimatedOpacity(
+                          opacity: cardHovered ? 1 : 0,
+                          duration: const Duration(milliseconds: 100),
+                          child: IgnorePointer(
+                            ignoring: !cardHovered,
+                            child: Draggable<String>(
+                              key: ValueKey<String>('event-drag-${node.id}'),
+                              data: node.id,
+                              rootOverlay: true,
+                              dragAnchorStrategy: pointerDragAnchorStrategy,
+                              feedback: Material(
+                                color: Theme.of(context).colorScheme.surface,
+                                elevation: 8,
+                                borderRadius: BorderRadius.circular(8),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  child: Text(
+                                    node.title,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              childWhenDragging: Icon(
+                                Icons.drag_indicator,
+                                size: 17,
+                                color: colors.faint,
+                              ),
+                              child: Tooltip(
+                                message: '拖动事件排序',
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.grab,
+                                  child: Icon(
+                                    Icons.drag_indicator,
+                                    size: 17,
+                                    color: colors.muted,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
                         MenuAnchor(
                           menuChildren: <Widget>[
                             MenuItemButton(
