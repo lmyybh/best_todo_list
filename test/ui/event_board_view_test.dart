@@ -87,6 +87,19 @@ void main() {
       tester.getSize(lastRowCard).height,
       tester.getSize(newEventCard).height,
     );
+    final firstCardSurface = find.byKey(
+      ValueKey<String>('event-card-surface-${roots.first}'),
+    );
+    final cardSizeBeforeHover = tester.getSize(firstCard);
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: tester.getCenter(firstCard));
+    await mouse.moveTo(tester.getCenter(firstCard));
+    await tester.pump(const Duration(milliseconds: 150));
+    final hoveredCard = tester.widget<AnimatedContainer>(firstCardSurface);
+    final hoveredDecoration = hoveredCard.decoration as BoxDecoration;
+    expect(hoveredDecoration.boxShadow, isNotEmpty);
+    expect(tester.getSize(firstCard), cardSizeBeforeHover);
     expect(
       find.byKey(ValueKey<String>('event-more-${roots.first}')),
       findsNothing,
