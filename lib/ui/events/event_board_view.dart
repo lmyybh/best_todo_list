@@ -519,6 +519,13 @@ class _VisibleTreeNode {
   final int depth;
 }
 
+class _TaskDragData {
+  const _TaskDragData({required this.nodeId, required this.parentId});
+
+  final String nodeId;
+  final String? parentId;
+}
+
 class _EventTreeRow extends StatefulWidget {
   const _EventTreeRow({
     required this.controller,
@@ -558,150 +565,215 @@ class _EventTreeRowState extends State<_EventTreeRow> {
     final children = tree.childrenOf(node.id);
     final hiddenDescendants = tree.descendantsOf(node.id).length;
     final complete = tree.isComplete(node.id);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => hovered = true),
-      onExit: (_) => setState(() => hovered = false),
-      child: DecoratedBox(
-        key: ValueKey<String>('event-row-surface-${node.id}'),
-        decoration: BoxDecoration(
-          color: highlighted
-              ? colors.accentSoft
-              : hovered
-              ? colors.surfaceHover
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: GestureDetector(
-          key: ValueKey<String>('event-row-${node.id}'),
-          behavior: HitTestBehavior.opaque,
-          onTap: () => controller.select(node.id),
-          child: SizedBox(
-            height: 36,
-            child: Padding(
-              padding: EdgeInsets.only(left: depth * 20),
-              child: Row(
-                children: <Widget>[
-                  SizedBox(
-                    width: 22,
-                    child: onToggleExpanded == null
-                        ? null
-                        : IconButton(
-                            key: ValueKey<String>('event-expand-${node.id}'),
-                            tooltip: expanded ? '折叠' : '展开',
-                            padding: EdgeInsets.zero,
-                            visualDensity: VisualDensity.compact,
-                            onPressed: onToggleExpanded,
-                            icon: Icon(
-                              expanded
-                                  ? Icons.keyboard_arrow_down
-                                  : Icons.keyboard_arrow_right,
-                              size: 15,
-                              color: colors.faint,
+    return DragTarget<_TaskDragData>(
+      onWillAcceptWithDetails: (details) =>
+          details.data.nodeId != node.id &&
+          details.data.parentId == node.parentId,
+      onAcceptWithDetails: (details) {
+        final orderedIds = tree
+            .childrenOf(node.parentId)
+            .map((sibling) => sibling.id)
+            .toList();
+        orderedIds.remove(details.data.nodeId);
+        orderedIds.insert(orderedIds.indexOf(node.id), details.data.nodeId);
+        unawaited(controller.reorderChildren(node.parentId, orderedIds));
+      },
+      builder: (context, candidates, _) => MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => hovered = true),
+        onExit: (_) => setState(() => hovered = false),
+        child: DecoratedBox(
+          key: ValueKey<String>('event-row-surface-${node.id}'),
+          decoration: BoxDecoration(
+            color: candidates.isNotEmpty
+                ? colors.accentSoft
+                : highlighted
+                ? colors.accentSoft
+                : hovered
+                ? colors.surfaceHover
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: GestureDetector(
+            key: ValueKey<String>('event-row-${node.id}'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => controller.select(node.id),
+            child: SizedBox(
+              height: 36,
+              child: Padding(
+                padding: EdgeInsets.only(left: depth * 20),
+                child: Row(
+                  children: <Widget>[
+                    SizedBox(
+                      width: 22,
+                      child: onToggleExpanded == null
+                          ? null
+                          : IconButton(
+                              key: ValueKey<String>('event-expand-${node.id}'),
+                              tooltip: expanded ? '折叠' : '展开',
+                              padding: EdgeInsets.zero,
+                              visualDensity: VisualDensity.compact,
+                              onPressed: onToggleExpanded,
+                              icon: Icon(
+                                expanded
+                                    ? Icons.keyboard_arrow_down
+                                    : Icons.keyboard_arrow_right,
+                                size: 15,
+                                color: colors.faint,
+                              ),
                             ),
-                          ),
-                  ),
-                  InkResponse(
-                    key: ValueKey<String>('event-complete-${node.id}'),
-                    onTap: children.isEmpty
-                        ? () => controller.setCompleted(node.id, !complete)
-                        : null,
-                    radius: 16,
-                    child: Container(
-                      width: children.isEmpty ? 15 : 7,
-                      height: children.isEmpty ? 15 : 7,
-                      decoration: BoxDecoration(
-                        color: children.isEmpty && complete
-                            ? colors.completion
-                            : children.isEmpty
-                            ? Colors.transparent
-                            : AppTheme.accent,
-                        shape: BoxShape.circle,
-                        border: children.isEmpty && !complete
-                            ? Border.all(color: colors.faint, width: 1.2)
-                            : null,
-                      ),
-                      child: children.isEmpty && complete
-                          ? const Icon(
-                              Icons.check,
-                              size: 10,
-                              color: Colors.white,
-                            )
-                          : null,
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        key: ValueKey<String>('event-row-title-${node.id}'),
-                        node.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: complete ? colors.faint : null,
-                          fontSize: 12,
-                          fontWeight: children.isEmpty
-                              ? FontWeight.w500
-                              : FontWeight.w600,
-                          decoration: complete
-                              ? TextDecoration.lineThrough
+                    InkResponse(
+                      key: ValueKey<String>('event-complete-${node.id}'),
+                      onTap: children.isEmpty
+                          ? () => controller.setCompleted(node.id, !complete)
+                          : null,
+                      radius: 16,
+                      child: Container(
+                        width: children.isEmpty ? 15 : 7,
+                        height: children.isEmpty ? 15 : 7,
+                        decoration: BoxDecoration(
+                          color: children.isEmpty && complete
+                              ? colors.completion
+                              : children.isEmpty
+                              ? Colors.transparent
+                              : AppTheme.accent,
+                          shape: BoxShape.circle,
+                          border: children.isEmpty && !complete
+                              ? Border.all(color: colors.faint, width: 1.2)
                               : null,
                         ),
+                        child: children.isEmpty && complete
+                            ? const Icon(
+                                Icons.check,
+                                size: 10,
+                                color: Colors.white,
+                              )
+                            : null,
                       ),
                     ),
-                  ),
-                  if (node.deadline != null && !hovered)
-                    Text(
-                      formatCompactDate(node.deadline!),
-                      style: TextStyle(color: colors.faint, fontSize: 9),
-                    ),
-                  if (children.isNotEmpty &&
-                      onToggleExpanded == null &&
-                      !hovered) ...<Widget>[
                     const SizedBox(width: 8),
-                    Text(
-                      '$hiddenDescendants 项',
-                      key: ValueKey<String>('event-nested-count-${node.id}'),
-                      style: TextStyle(color: colors.faint, fontSize: 9),
-                    ),
-                  ],
-                  AnimatedOpacity(
-                    key: ValueKey<String>('event-row-actions-${node.id}'),
-                    opacity: hovered ? 1 : 0,
-                    duration: const Duration(milliseconds: 120),
-                    child: IgnorePointer(
-                      ignoring: !hovered,
-                      child: MenuAnchor(
-                        menuChildren: <Widget>[
-                          MenuItemButton(
-                            onPressed: () =>
-                                _renameNode(context, controller, node),
-                            child: const Text('重命名'),
-                          ),
-                          MenuItemButton(
-                            onPressed: () =>
-                                _deleteNode(context, controller, node),
-                            child: const Text('删除'),
-                          ),
-                        ],
-                        builder: (context, menu, _) => IconButton(
-                          key: ValueKey<String>('event-row-menu-${node.id}'),
-                          tooltip: '任务操作',
-                          padding: EdgeInsets.zero,
-                          visualDensity: VisualDensity.compact,
-                          onPressed: menu.open,
-                          icon: Icon(
-                            Icons.more_horiz,
-                            size: 16,
-                            color: colors.muted,
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          key: ValueKey<String>('event-row-title-${node.id}'),
+                          node.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: complete ? colors.faint : null,
+                            fontSize: 12,
+                            fontWeight: children.isEmpty
+                                ? FontWeight.w500
+                                : FontWeight.w600,
+                            decoration: complete
+                                ? TextDecoration.lineThrough
+                                : null,
                           ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                    if (node.deadline != null && !hovered)
+                      Text(
+                        formatCompactDate(node.deadline!),
+                        style: TextStyle(color: colors.faint, fontSize: 9),
+                      ),
+                    if (children.isNotEmpty &&
+                        onToggleExpanded == null &&
+                        !hovered) ...<Widget>[
+                      const SizedBox(width: 8),
+                      Text(
+                        '$hiddenDescendants 项',
+                        key: ValueKey<String>('event-nested-count-${node.id}'),
+                        style: TextStyle(color: colors.faint, fontSize: 9),
+                      ),
+                    ],
+                    AnimatedOpacity(
+                      key: ValueKey<String>('event-row-actions-${node.id}'),
+                      opacity: hovered ? 1 : 0,
+                      duration: const Duration(milliseconds: 120),
+                      child: IgnorePointer(
+                        ignoring: !hovered,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Draggable<_TaskDragData>(
+                              key: ValueKey<String>(
+                                'event-task-drag-${node.id}',
+                              ),
+                              data: _TaskDragData(
+                                nodeId: node.id,
+                                parentId: node.parentId,
+                              ),
+                              rootOverlay: true,
+                              dragAnchorStrategy: pointerDragAnchorStrategy,
+                              feedback: Material(
+                                color: Theme.of(context).colorScheme.surface,
+                                elevation: 6,
+                                borderRadius: BorderRadius.circular(7),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 7,
+                                  ),
+                                  child: Text(
+                                    node.title,
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                ),
+                              ),
+                              childWhenDragging: Icon(
+                                Icons.drag_indicator,
+                                size: 16,
+                                color: colors.faint,
+                              ),
+                              child: Tooltip(
+                                message: '拖动调整同级顺序',
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.grab,
+                                  child: Icon(
+                                    Icons.drag_indicator,
+                                    size: 16,
+                                    color: colors.muted,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            MenuAnchor(
+                              menuChildren: <Widget>[
+                                MenuItemButton(
+                                  onPressed: () =>
+                                      _renameNode(context, controller, node),
+                                  child: const Text('重命名'),
+                                ),
+                                MenuItemButton(
+                                  onPressed: () =>
+                                      _deleteNode(context, controller, node),
+                                  child: const Text('删除'),
+                                ),
+                              ],
+                              builder: (context, menu, _) => IconButton(
+                                key: ValueKey<String>(
+                                  'event-row-menu-${node.id}',
+                                ),
+                                tooltip: '任务操作',
+                                padding: EdgeInsets.zero,
+                                visualDensity: VisualDensity.compact,
+                                onPressed: menu.open,
+                                icon: Icon(
+                                  Icons.more_horiz,
+                                  size: 16,
+                                  color: colors.muted,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
