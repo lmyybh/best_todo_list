@@ -151,7 +151,10 @@ void main() {
     );
     await tester.tapAt(tester.getTopRight(row) - const Offset(2, -18));
     await tester.pumpAndSettle();
-    expect(controller.eventDetailOpen, isFalse);
+    expect(controller.eventDetailOpen, isTrue);
+    expect(controller.selectedId, task.id);
+    controller.showEventOverview();
+    await tester.pumpAndSettle();
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
     addTearDown(mouse.removePointer);
     await mouse.addPointer(location: tester.getCenter(row));
@@ -191,6 +194,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(ValueKey<String>('event-row-menu-${task.id}')));
     await tester.pumpAndSettle();
+    expect(controller.eventDetailOpen, isFalse);
     expect(find.text('重命名'), findsOneWidget);
     expect(find.text('删除'), findsOneWidget);
     await tester.tapAt(const Offset(900, 700));
@@ -270,9 +274,7 @@ void main() {
     await tester.pumpWidget(TodoApp(controller: controller));
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(ValueKey<String>('event-row-title-${task!.id}')),
-    );
+    await tester.tap(find.byKey(ValueKey<String>('event-row-${task!.id}')));
     await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey<String>('event-detail-panel')),
