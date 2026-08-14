@@ -303,7 +303,7 @@ void main() {
     );
   });
 
-  testWidgets('事件卡片最多预览两级任务结构', (tester) async {
+  testWidgets('事件卡片默认预览三级任务结构', (tester) async {
     var id = 0;
     final controller = AppController(
       NodeService(
@@ -327,9 +327,14 @@ void main() {
       title: '内容检查',
       selectCreated: false,
     );
-    await controller.create(
+    final third = await controller.create(
       parentId: second!.id,
       title: '检查错别字',
+      selectCreated: false,
+    );
+    await controller.create(
+      parentId: third!.id,
+      title: '复核标点',
       selectCreated: false,
     );
     controller.showEventOverview();
@@ -340,14 +345,19 @@ void main() {
 
     expect(find.text('准备阶段'), findsOneWidget);
     expect(find.text('内容检查'), findsOneWidget);
-    expect(find.text('检查错别字'), findsNothing);
+    expect(find.text('检查错别字'), findsOneWidget);
+    expect(find.text('复核标点'), findsNothing);
     expect(
-      find.byKey(ValueKey<String>('event-nested-count-${second.id}')),
+      find.byKey(ValueKey<String>('event-nested-count-${third.id}')),
       findsOneWidget,
     );
     expect(
-      find.byKey(ValueKey<String>('event-expand-${second.id}')),
+      find.byKey(ValueKey<String>('event-expand-${third.id}')),
       findsNothing,
+    );
+    expect(
+      find.byKey(ValueKey<String>('event-expand-${second.id}')),
+      findsOneWidget,
     );
   });
 }

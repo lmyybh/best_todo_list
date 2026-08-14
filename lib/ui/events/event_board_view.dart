@@ -21,6 +21,7 @@ class EventBoardView extends StatelessWidget {
   static const double minimumCardHeight = 300;
   static const double maximumCardHeight = 430;
   static const int previewRowLimit = 5;
+  static const int maximumPreviewDepth = 2;
   static const double spacing = 16;
 
   @override
@@ -365,7 +366,9 @@ class _EventCardState extends State<_EventCard> {
                               expanded: !collapsedIds.contains(item.node.id),
                               highlighted: highlightedId == item.node.id,
                               onToggleExpanded:
-                                  tree.isLeaf(item.node.id) || item.depth >= 1
+                                  tree.isLeaf(item.node.id) ||
+                                      item.depth >=
+                                          EventBoardView.maximumPreviewDepth
                                   ? null
                                   : () => setState(() {
                                       if (!collapsedIds.add(item.node.id)) {
@@ -395,7 +398,8 @@ class _EventCardState extends State<_EventCard> {
     void visit(String id, int depth) {
       for (final child in tree.childrenOf(id)) {
         result.add(_VisibleTreeNode(node: child, depth: depth));
-        if (depth < 1 && !collapsedIds.contains(child.id)) {
+        if (depth < EventBoardView.maximumPreviewDepth &&
+            !collapsedIds.contains(child.id)) {
           visit(child.id, depth + 1);
         }
       }
