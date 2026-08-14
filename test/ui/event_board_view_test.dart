@@ -103,11 +103,37 @@ void main() {
     final dragHandle = find.byKey(
       ValueKey<String>('event-drag-${roots.first}'),
     );
-    final thirdCard = find.byKey(ValueKey<String>('event-card-${roots[2]}'));
-    await tester.drag(
-      dragHandle,
-      tester.getCenter(thirdCard) - tester.getCenter(dragHandle),
+    final firstTitle = find.byKey(
+      ValueKey<String>('event-title-${roots.first}'),
     );
+    expect(
+      tester.getCenter(dragHandle).dx,
+      lessThan(tester.getCenter(firstTitle).dx),
+    );
+    final thirdCard = find.byKey(ValueKey<String>('event-card-${roots[2]}'));
+    final cardDrag = await tester.startGesture(tester.getCenter(dragHandle));
+    await cardDrag.moveBy(const Offset(5, 0));
+    await cardDrag.moveTo(tester.getCenter(thirdCard));
+    await tester.pump(const Duration(milliseconds: 130));
+    expect(
+      tester
+          .widget<AnimatedOpacity>(
+            find.byKey(ValueKey<String>('event-drag-source-${roots.first}')),
+          )
+          .opacity,
+      0.42,
+    );
+    final targetSurface = tester.widget<AnimatedContainer>(
+      find.byKey(ValueKey<String>('event-card-surface-${roots[2]}')),
+    );
+    final targetForeground =
+        targetSurface.foregroundDecoration as BoxDecoration;
+    expect(targetForeground.border!.top.width, 3);
+    expect(
+      targetForeground.border!.top.color,
+      Theme.of(tester.element(thirdCard)).colorScheme.primary,
+    );
+    await cardDrag.up();
     await tester.pumpAndSettle();
     expect(
       controller.tree.childrenOf(null).take(3).map((node) => node.id),
@@ -377,10 +403,34 @@ void main() {
     await mouse.moveTo(tester.getCenter(secondRow));
     await tester.pump(const Duration(milliseconds: 150));
     final handle = find.byKey(ValueKey<String>('event-task-drag-${second.id}'));
-    await tester.drag(
-      handle,
-      tester.getCenter(firstRow) - tester.getCenter(handle),
+    final completion = find.byKey(
+      ValueKey<String>('event-complete-${second.id}'),
     );
+    expect(
+      tester.getCenter(handle).dx,
+      lessThan(tester.getCenter(completion).dx),
+    );
+    final taskDrag = await tester.startGesture(tester.getCenter(handle));
+    await taskDrag.moveBy(const Offset(5, 0));
+    await taskDrag.moveTo(tester.getCenter(firstRow));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      tester
+          .widget<AnimatedOpacity>(
+            find.byKey(ValueKey<String>('event-task-drag-source-${second.id}')),
+          )
+          .opacity,
+      0.38,
+    );
+    expect(
+      tester
+          .widget<AnimatedOpacity>(
+            find.byKey(ValueKey<String>('event-task-drop-${first.id}')),
+          )
+          .opacity,
+      1,
+    );
+    await taskDrag.up();
     await tester.pumpAndSettle();
 
     expect(controller.tree.childrenOf(root.id).map((node) => node.id), <String>[
