@@ -382,6 +382,53 @@ void main() {
     expect(controller.eventDetailOpen, isFalse);
   });
 
+  testWidgets('子任务 hover 后可以直接新建它的子任务', (tester) async {
+    var id = 0;
+    final controller = AppController(
+      NodeService(
+        MemoryNodeRepository(),
+        clock: () => DateTime.utc(2026, 8, 13, 9),
+        idGenerator: () => 'child-${++id}',
+      ),
+      clock: () => DateTime(2026, 8, 13, 9),
+    );
+    await controller.load();
+    addTearDown(controller.dispose);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final root = await controller.create(title: '发布计划', selectCreated: false);
+    final task = await controller.create(
+      parentId: root!.id,
+      title: '检查文案',
+      selectCreated: false,
+    );
+    controller.showEventOverview();
+
+    await tester.binding.setSurfaceSize(const Size(1100, 760));
+    await tester.pumpWidget(TodoApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    final row = find.byKey(ValueKey<String>('event-row-${task!.id}'));
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: tester.getCenter(row));
+    await mouse.moveTo(tester.getCenter(row));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.tap(
+      find.byKey(ValueKey<String>('event-add-child-${task.id}')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('新建子任务'), findsOneWidget);
+    await tester.enterText(find.byType(TextFormField), '检查链接');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(
+      controller.tree.childrenOf(task.id).map((node) => node.title),
+      <String>['检查链接'],
+    );
+    expect(controller.eventDetailOpen, isFalse);
+  });
+
   testWidgets('事件卡片默认预览三级任务结构', (tester) async {
     var id = 0;
     final controller = AppController(

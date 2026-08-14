@@ -698,6 +698,25 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: <Widget>[
+                            IconButton(
+                              key: ValueKey<String>(
+                                'event-add-child-${node.id}',
+                              ),
+                              tooltip: '新建子任务',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints.tightFor(
+                                width: 28,
+                                height: 30,
+                              ),
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () =>
+                                  _createChildNode(context, controller, node),
+                              icon: Icon(
+                                Icons.add,
+                                size: 16,
+                                color: colors.muted,
+                              ),
+                            ),
                             Draggable<_TaskDragData>(
                               key: ValueKey<String>(
                                 'event-task-drag-${node.id}',
@@ -1009,6 +1028,27 @@ Future<void> _renameNode(
   if (title != null && title.trim().isNotEmpty) {
     await controller.updateTitle(node.id, title);
   }
+}
+
+Future<void> _createChildNode(
+  BuildContext context,
+  AppController controller,
+  TodoNode parent,
+) async {
+  final title = await showDialog<String>(
+    context: context,
+    builder: (context) => const CreateNodeDialog(
+      title: '新建子任务',
+      fieldLabel: '任务名称',
+      hintText: '输入子任务名称',
+    ),
+  );
+  if (title == null || title.trim().isEmpty) return;
+  await controller.create(
+    parentId: parent.id,
+    title: title,
+    selectCreated: false,
+  );
 }
 
 Future<void> _deleteNode(
