@@ -2099,9 +2099,11 @@ class _NewEventCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     return OutlinedButton(
+      key: const ValueKey<String>('event-new-card'),
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
         foregroundColor: colors.muted,
+        enabledMouseCursor: SystemMouseCursors.click,
         backgroundColor: dropTargeted
             ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.06)
             : null,

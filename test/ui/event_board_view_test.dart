@@ -80,6 +80,13 @@ void main() {
           expectedPanelPadding + 8,
         ),
       );
+      final newEventCard = tester.widget<OutlinedButton>(
+        find.byKey(const ValueKey<String>('event-new-card')),
+      );
+      expect(
+        newEventCard.style?.mouseCursor?.resolve(const <WidgetState>{}),
+        SystemMouseCursors.click,
+      );
       final cards = <Finder>[
         for (final root in roots)
           find.byKey(ValueKey<String>('event-card-$root')),
