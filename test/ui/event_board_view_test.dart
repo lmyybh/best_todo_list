@@ -42,10 +42,44 @@ void main() {
     }
     controller.showEventOverview();
 
-    Future<void> expectColumns(double width, int expectedColumns) async {
-      await tester.binding.setSurfaceSize(Size(width, 900));
+    Future<Size> expectLayout(
+      double width,
+      double height,
+      int expectedColumns,
+      double expectedPanelPadding, {
+      bool expectReflowAnimation = false,
+    }) async {
+      await tester.binding.setSurfaceSize(Size(width, height));
       await tester.pumpWidget(TodoApp(controller: controller));
+      await tester.pump();
+      if (expectReflowAnimation) {
+        expect(
+          tester
+              .widget<AnimatedPositioned>(
+                find.byKey(ValueKey<String>('event-layout-${roots.first}')),
+              )
+              .duration,
+          const Duration(milliseconds: 140),
+        );
+      }
       await tester.pumpAndSettle();
+      final boardScroll = tester.widget<SingleChildScrollView>(
+        find
+            .descendant(
+              of: find.byKey(const ValueKey<String>('event-board-scroll')),
+              matching: find.byType(SingleChildScrollView),
+            )
+            .first,
+      );
+      expect(
+        boardScroll.padding,
+        EdgeInsets.fromLTRB(
+          expectedPanelPadding,
+          expectedPanelPadding,
+          expectedPanelPadding,
+          expectedPanelPadding + 8,
+        ),
+      );
       final cards = <Finder>[
         for (final root in roots)
           find.byKey(ValueKey<String>('event-card-$root')),
@@ -55,18 +89,63 @@ void main() {
           .where((card) => (tester.getTopLeft(card).dy - firstRowY).abs() < 1)
           .length;
       expect(firstRowCount, expectedColumns);
+      final cardSize = tester.getSize(cards.first);
+      if (expectedColumns > 1) {
+        expect(
+          cardSize.width,
+          inInclusiveRange(
+            EventBoardView.minimumCardWidth,
+            EventBoardView.maximumCardWidth,
+          ),
+        );
+      } else {
+        expect(
+          cardSize.width,
+          lessThanOrEqualTo(EventBoardView.singleColumnMaximumWidth),
+        );
+      }
+      expect(
+        tester
+            .getCenter(find.byKey(const ValueKey<String>('event-board-wrap')))
+            .dx,
+        closeTo(
+          tester
+              .getCenter(
+                find.byKey(const ValueKey<String>('event-board-scroll')),
+              )
+              .dx,
+          1,
+        ),
+      );
+      return cardSize;
     }
 
-    await expectColumns(720, 1);
-    await expectColumns(1100, 2);
-    await expectColumns(1440, 3);
+    await expectLayout(500, 900, 1, 16);
+    await expectLayout(720, 900, 2, 20, expectReflowAnimation: true);
+    await expectLayout(900, 900, 2, 20);
+    await expectLayout(1100, 900, 3, 20, expectReflowAnimation: true);
+    final tallCardSize = await expectLayout(
+      1440,
+      900,
+      4,
+      24,
+      expectReflowAnimation: true,
+    );
+    final shortCardSize = await expectLayout(1440, 600, 4, 24);
+    expect(shortCardSize.height, lessThan(tallCardSize.height));
+    final ultraWideCardSize = await expectLayout(1900, 900, 4, 24);
+    expect(
+      ultraWideCardSize.width,
+      closeTo(EventBoardView.maximumCardWidth, 0.1),
+    );
+    await expectLayout(1440, 900, 4, 24);
 
     final firstCard = find.byKey(ValueKey<String>('event-card-${roots.first}'));
     final firstRowPeer = find.byKey(ValueKey<String>('event-card-${roots[1]}'));
     final secondRowCard = find.byKey(
-      ValueKey<String>('event-card-${roots[3]}'),
+      ValueKey<String>('event-card-${roots[4]}'),
     );
-    final lastRowCard = find.byKey(ValueKey<String>('event-card-${roots[6]}'));
+    final lastRowCard = find.byKey(ValueKey<String>('event-card-${roots[7]}'));
     final newEventCard = find.byKey(const ValueKey<String>('new-event-card'));
     expect(
       tester.getSize(firstCard).height,
@@ -134,6 +213,8 @@ void main() {
     expect(tester.getTopLeft(firstRowPeer), firstPosition);
     expect(tester.getTopLeft(thirdCard), secondPosition);
     expect(tester.getTopLeft(firstCard), thirdPosition);
+    await cardDrag.moveBy(const Offset(1, 0));
+    await tester.pump();
     await cardDrag.up();
     await tester.pumpAndSettle();
     expect(
@@ -162,7 +243,7 @@ void main() {
     expect(find.text('任务 7'), findsOneWidget);
   });
 
-  testWidgets('卡片内新增完成展开和菜单互不触发详情跳转', (tester) async {
+  testWidgets('卡片内新增完成重命名删除和展开互不触发详情跳转', (tester) async {
     var id = 0;
     final controller = AppController(
       NodeService(
@@ -213,6 +294,24 @@ void main() {
     await mouse.addPointer(location: tester.getCenter(row));
     await mouse.moveTo(tester.getCenter(row));
     await tester.pump(const Duration(milliseconds: 150));
+    final addButton = tester.widget<IconButton>(
+      find.byKey(ValueKey<String>('event-add-child-${task.id}')),
+    );
+    final deleteButton = tester.widget<IconButton>(
+      find.byKey(ValueKey<String>('event-delete-task-${task.id}')),
+    );
+    expect(addButton.constraints, deleteButton.constraints);
+    expect(addButton.padding, deleteButton.padding);
+    expect(addButton.visualDensity, deleteButton.visualDensity);
+    expect(addButton.mouseCursor, SystemMouseCursors.click);
+    expect(deleteButton.mouseCursor, SystemMouseCursors.click);
+    expect(addButton.style, isNull);
+    expect(
+      deleteButton.style?.foregroundColor?.resolve(const <WidgetState>{
+        WidgetState.hovered,
+      }),
+      AppColors.of(tester.element(row)).danger,
+    );
     final hoveredSurface = tester.widget<DecoratedBox>(surface);
     final hoveredDecoration = hoveredSurface.decoration as BoxDecoration;
     expect(
@@ -245,13 +344,64 @@ void main() {
     );
     await mouse.moveTo(tester.getCenter(row));
     await tester.pump();
-    await tester.tap(find.byKey(ValueKey<String>('event-row-menu-${task.id}')));
+    await tester.tap(title);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(title);
     await tester.pumpAndSettle();
     expect(controller.eventDetailOpen, isFalse);
-    expect(find.text('重命名'), findsOneWidget);
-    expect(find.text('删除'), findsOneWidget);
+    final renameInput = find.byKey(
+      ValueKey<String>('event-inline-rename-${task.id}'),
+    );
+    expect(renameInput, findsOneWidget);
+    expect(
+      find.byKey(ValueKey<String>('event-row-menu-${task.id}')),
+      findsNothing,
+    );
+    await tester.enterText(renameInput, '阅读 v5');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(controller.tree.nodes[task.id]?.title, '阅读 v5');
+    expect(renameInput, findsNothing);
+
+    tester
+        .widget<Focus>(
+          find.byKey(ValueKey<String>('event-row-focus-${task.id}')),
+        )
+        .focusNode!
+        .requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.f2);
+    await tester.pumpAndSettle();
+    await tester.enterText(renameInput, '阅读 v6');
     await tester.tapAt(const Offset(900, 700));
     await tester.pumpAndSettle();
+    expect(controller.tree.nodes[task.id]?.title, '阅读 v6');
+    expect(renameInput, findsNothing);
+
+    await tester.tap(
+      find.byKey(ValueKey<String>('event-delete-task-${task.id}')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('删除这个任务？'), findsOneWidget);
+    expect(controller.eventDetailOpen, isFalse);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+
+    tester
+        .widget<Focus>(
+          find.byKey(ValueKey<String>('event-row-focus-${task.id}')),
+        )
+        .focusNode!
+        .requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.f2);
+    await tester.pumpAndSettle();
+    expect(renameInput, findsOneWidget);
+    await tester.enterText(renameInput, '不保存的名称');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(controller.tree.nodes[task.id]?.title, '阅读 v6');
+    expect(renameInput, findsNothing);
 
     final quickAdd = find.byKey(ValueKey<String>('event-quick-add-${root.id}'));
     expect(quickAdd, findsNothing);
@@ -282,19 +432,19 @@ void main() {
     await tester.tap(find.byKey(ValueKey<String>('event-complete-${task.id}')));
     await tester.pumpAndSettle();
     expect(controller.tree.isComplete(task.id), isTrue);
-    expect(find.text('阅读 v4'), findsOneWidget);
+    expect(find.text('阅读 v6'), findsOneWidget);
     expect(
-      tester.widget<Text>(find.text('阅读 v4')).style?.decoration,
+      tester.widget<Text>(find.text('阅读 v6')).style?.decoration,
       TextDecoration.lineThrough,
     );
     expect(controller.eventDetailOpen, isFalse);
 
     await tester.tap(find.byKey(ValueKey<String>('event-expand-${branch.id}')));
     await tester.pumpAndSettle();
-    expect(find.text('阅读 v4'), findsNothing);
+    expect(find.text('阅读 v6'), findsNothing);
     await tester.tap(find.byKey(ValueKey<String>('event-expand-${branch.id}')));
     await tester.pumpAndSettle();
-    expect(find.text('阅读 v4'), findsOneWidget);
+    expect(find.text('阅读 v6'), findsOneWidget);
 
     await tester.tap(find.byKey(ValueKey<String>('event-menu-${root.id}')));
     await tester.pumpAndSettle();
@@ -416,6 +566,27 @@ void main() {
       tester.getCenter(handle).dx,
       lessThan(tester.getCenter(completion).dx),
     );
+    final leafHandle = find.byKey(
+      ValueKey<String>('event-task-drag-${first.id}'),
+    );
+    final leafCompletion = find.byKey(
+      ValueKey<String>('event-complete-${first.id}'),
+    );
+    final leafTitle = find.byKey(
+      ValueKey<String>('event-row-title-${first.id}'),
+    );
+    expect(
+      tester.getCenter(leafHandle).dx - tester.getTopLeft(firstRow).dx,
+      closeTo(9, 0.1),
+    );
+    expect(
+      tester.getCenter(leafCompletion).dx - tester.getCenter(leafHandle).dx,
+      lessThanOrEqualTo(25),
+    );
+    expect(
+      tester.getTopLeft(leafTitle).dx - tester.getTopRight(leafCompletion).dx,
+      lessThanOrEqualTo(6.5),
+    );
     final firstTop = tester.getTopLeft(firstRow).dy;
     final secondTop = tester.getTopLeft(secondRow).dy;
     final taskDrag = await tester.startGesture(tester.getCenter(handle));
@@ -536,7 +707,7 @@ void main() {
     ]);
   });
 
-  testWidgets('子任务 hover 后可以直接新建它的子任务', (tester) async {
+  testWidgets('子任务 hover 后可以在树内直接新建它的子任务', (tester) async {
     var id = 0;
     final controller = AppController(
       NodeService(
@@ -571,8 +742,16 @@ void main() {
       find.byKey(ValueKey<String>('event-add-child-${task.id}')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('新建子任务'), findsOneWidget);
-    await tester.enterText(find.byType(TextFormField), '检查链接');
+    final draftInput = find.byKey(
+      const ValueKey<String>('event-inline-draft-input'),
+    );
+    expect(draftInput, findsOneWidget);
+    expect(find.byType(Dialog), findsNothing);
+    expect(
+      tester.getTopLeft(draftInput).dy,
+      greaterThan(tester.getTopLeft(row).dy),
+    );
+    await tester.enterText(draftInput, '检查链接');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
@@ -580,7 +759,140 @@ void main() {
       controller.tree.childrenOf(task.id).map((node) => node.title),
       <String>['检查链接'],
     );
+    expect(draftInput, findsNothing);
     expect(controller.eventDetailOpen, isFalse);
+
+    await tester.tap(
+      find.byKey(ValueKey<String>('event-add-child-${task.id}')),
+    );
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(draftInput, findsNothing);
+    expect(controller.tree.childrenOf(task.id), hasLength(1));
+
+    await tester.tap(
+      find.byKey(ValueKey<String>('event-add-child-${task.id}')),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(draftInput, '校对附件');
+    await tester.tapAt(const Offset(900, 700));
+    await tester.pumpAndSettle();
+    expect(
+      controller.tree.childrenOf(task.id).map((node) => node.title),
+      <String>['检查链接', '校对附件'],
+    );
+    expect(draftInput, findsNothing);
+  });
+
+  testWidgets('事件卡片内输入不会改变事件面板滚动位置', (tester) async {
+    var id = 0;
+    final controller = AppController(
+      NodeService(
+        MemoryNodeRepository(),
+        clock: () => DateTime.utc(2026, 8, 13, 9),
+        idGenerator: () => 'scroll-child-${++id}',
+      ),
+      clock: () => DateTime(2026, 8, 13, 9),
+    );
+    await controller.load();
+    addTearDown(controller.dispose);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final rootIds = <String>[];
+    final taskIds = <String>[];
+    for (var index = 0; index < 8; index++) {
+      final root = await controller.create(
+        title: '事件 $index',
+        selectCreated: false,
+      );
+      final task = await controller.create(
+        parentId: root!.id,
+        title: '任务 $index',
+        selectCreated: false,
+      );
+      rootIds.add(root.id);
+      taskIds.add(task!.id);
+    }
+    controller.showEventOverview();
+
+    await tester.binding.setSurfaceSize(const Size(720, 600));
+    await tester.pumpWidget(TodoApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    final boardScroll = tester.widget<SingleChildScrollView>(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('event-board-scroll')),
+        matching: find.byType(SingleChildScrollView),
+      ),
+    );
+    final boardController = boardScroll.controller!;
+    boardController.jumpTo(boardController.position.maxScrollExtent * 0.55);
+    await tester.pump();
+
+    final targetId = taskIds.firstWhere(
+      (taskId) => find
+          .byKey(ValueKey<String>('event-row-$taskId'))
+          .hitTestable()
+          .evaluate()
+          .isNotEmpty,
+    );
+    final row = find.byKey(ValueKey<String>('event-row-$targetId'));
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: tester.getCenter(row));
+    await mouse.moveTo(tester.getCenter(row));
+    await tester.pump(const Duration(milliseconds: 150));
+    final offsetBeforeCreate = boardController.offset;
+
+    await tester.tap(find.byKey(ValueKey<String>('event-add-child-$targetId')));
+    await tester.pumpAndSettle();
+
+    expect(boardController.offset, closeTo(offsetBeforeCreate, 0.1));
+    expect(
+      find.byKey(const ValueKey<String>('event-inline-draft-input')),
+      findsOneWidget,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    final renameOffset = boardController.offset;
+    final title = find.byKey(ValueKey<String>('event-row-title-$targetId'));
+    await tester.tap(title);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(title);
+    await tester.pumpAndSettle();
+    expect(boardController.offset, closeTo(renameOffset, 0.1));
+    expect(
+      find.byKey(ValueKey<String>('event-inline-rename-$targetId')),
+      findsOneWidget,
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+
+    final quickAddRootId = rootIds.firstWhere(
+      (rootId) => find
+          .byKey(ValueKey<String>('event-quick-add-trigger-$rootId'))
+          .hitTestable()
+          .evaluate()
+          .isNotEmpty,
+    );
+    final quickAddOffset = boardController.offset;
+    await tester.tap(
+      find.byKey(ValueKey<String>('event-quick-add-trigger-$quickAddRootId')),
+    );
+    await tester.pumpAndSettle();
+    expect(boardController.offset, closeTo(quickAddOffset, 0.1));
+    expect(
+      find.byKey(ValueKey<String>('event-quick-add-$quickAddRootId')),
+      findsOneWidget,
+    );
+    await tester.enterText(
+      find.byKey(ValueKey<String>('event-quick-add-$quickAddRootId')),
+      '快速新增任务',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(boardController.offset, closeTo(quickAddOffset, 0.1));
   });
 
   testWidgets('事件卡片默认预览三级任务结构', (tester) async {

@@ -17,10 +17,12 @@ class EventBoardView extends StatefulWidget {
 
   final AppController controller;
 
-  static const double cardWidth = 352;
   static const double minimumCardWidth = 300;
-  static const double minimumCardHeight = 300;
-  static const double maximumCardHeight = 430;
+  static const double maximumCardWidth = 420;
+  static const double singleColumnMaximumWidth = 680;
+  static const double minimumCardHeight = 280;
+  static const double maximumCardHeight = 500;
+  static const int maximumColumns = 4;
   static const int previewRowLimit = 5;
   static const int maximumPreviewDepth = 2;
   static const double spacing = 16;
@@ -35,15 +37,20 @@ class _EventBoardViewState extends State<EventBoardView> {
   final ScrollController boardScrollController = ScrollController();
   final FocusNode boardFocusNode = FocusNode(debugLabel: 'event-board');
   Timer? autoScrollTimer;
+  Timer? responsiveReflowTimer;
   double autoScrollVelocity = 0;
+  int? renderedColumns;
+  bool animateResponsiveReflow = false;
   String? draggedEventId;
   List<String>? previewRootIds;
   List<String>? dragStartRootIds;
+  Offset? latestDragPosition;
   bool dragCanceled = false;
 
   @override
   void dispose() {
     autoScrollTimer?.cancel();
+    responsiveReflowTimer?.cancel();
     boardScrollController.dispose();
     boardFocusNode.dispose();
     super.dispose();
@@ -77,21 +84,48 @@ class _EventBoardViewState extends State<EventBoardView> {
       },
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final horizontalPadding = constraints.maxWidth < 760 ? 18.0 : 22.0;
-          final availableWidth = constraints.maxWidth - horizontalPadding * 2;
+          final panelPadding = constraints.maxWidth < 640
+              ? const EdgeInsets.fromLTRB(16, 16, 16, 24)
+              : constraints.maxWidth < 1200
+              ? const EdgeInsets.fromLTRB(20, 20, 20, 28)
+              : const EdgeInsets.fromLTRB(24, 24, 24, 32);
+          final availableWidth =
+              (constraints.maxWidth - panelPadding.horizontal)
+                  .clamp(0, double.infinity)
+                  .toDouble();
           final columns =
               ((availableWidth + EventBoardView.spacing) /
-                      (EventBoardView.cardWidth + EventBoardView.spacing))
+                      (EventBoardView.minimumCardWidth +
+                          EventBoardView.spacing))
                   .floor()
-                  .clamp(1, 4);
+                  .clamp(1, EventBoardView.maximumColumns);
+          _recordRenderedColumns(columns);
+          final animationsDisabled = MediaQuery.disableAnimationsOf(context);
+          final layoutAnimationDuration = animationsDisabled
+              ? Duration.zero
+              : draggedEventId != null
+              ? const Duration(milliseconds: 160)
+              : animateResponsiveReflow
+              ? const Duration(milliseconds: 140)
+              : Duration.zero;
+          final maximumWidthForColumns = columns == 1
+              ? EventBoardView.singleColumnMaximumWidth
+              : EventBoardView.maximumCardWidth * columns +
+                    EventBoardView.spacing * (columns - 1);
+          final gridWidth = availableWidth
+              .clamp(0, maximumWidthForColumns)
+              .toDouble();
           final resolvedWidth =
-              ((availableWidth - EventBoardView.spacing * (columns - 1)) /
-                      columns)
-                  .clamp(
-                    EventBoardView.minimumCardWidth,
-                    EventBoardView.cardWidth,
-                  )
-                  .toDouble();
+              (gridWidth - EventBoardView.spacing * (columns - 1)) / columns;
+          final viewportHeight = constraints.hasBoundedHeight
+              ? constraints.maxHeight
+              : 800.0;
+          final minimumCardHeight = (viewportHeight * 0.36)
+              .clamp(EventBoardView.minimumCardHeight, 340)
+              .toDouble();
+          final maximumCardHeight = (viewportHeight * 0.55)
+              .clamp(360, EventBoardView.maximumCardHeight)
+              .toDouble();
 
           final items = <TodoNode?>[...orderedRoots, null];
           final rowHeights = <double>[];
@@ -102,11 +136,22 @@ class _EventBoardViewState extends State<EventBoardView> {
             );
             rowHeights.add(
               row.whereType<TodoNode>().fold<double>(
-                EventBoardView.minimumCardHeight,
+                minimumCardHeight,
                 (height, node) =>
-                    height > _preferredCardHeight(widget.controller.tree, node)
+                    height >
+                        _preferredCardHeight(
+                          widget.controller.tree,
+                          node,
+                          minimumHeight: minimumCardHeight,
+                          maximumHeight: maximumCardHeight,
+                        )
                     ? height
-                    : _preferredCardHeight(widget.controller.tree, node),
+                    : _preferredCardHeight(
+                        widget.controller.tree,
+                        node,
+                        minimumHeight: minimumCardHeight,
+                        maximumHeight: maximumCardHeight,
+                      ),
               ),
             );
           }
@@ -123,35 +168,35 @@ class _EventBoardViewState extends State<EventBoardView> {
             child: SingleChildScrollView(
               key: scrollViewportKey,
               controller: boardScrollController,
-              padding: EdgeInsets.fromLTRB(
-                horizontalPadding,
-                18,
-                horizontalPadding,
-                28,
-              ),
+              padding: panelPadding,
               child: roots.isEmpty
                   ? _EmptyBoard(onCreate: () => _createEvent(context))
-                  : SizedBox(
-                      key: const ValueKey<String>('event-board-wrap'),
-                      height: totalHeight,
-                      child: Stack(
-                        key: boardKey,
-                        children: <Widget>[
-                          for (var index = 0; index < items.length; index++)
-                            _buildPositionedItem(
-                              context: context,
-                              item: items[index],
-                              allRoots: roots,
-                              index: index,
-                              columns: columns,
-                              width: resolvedWidth,
-                              height: rowHeights[index ~/ columns],
-                              left:
-                                  (index % columns) *
-                                  (resolvedWidth + EventBoardView.spacing),
-                              top: rowOffsets[index ~/ columns],
-                            ),
-                        ],
+                  : Align(
+                      alignment: Alignment.topCenter,
+                      child: SizedBox(
+                        key: const ValueKey<String>('event-board-wrap'),
+                        width: gridWidth,
+                        height: totalHeight,
+                        child: Stack(
+                          key: boardKey,
+                          children: <Widget>[
+                            for (var index = 0; index < items.length; index++)
+                              _buildPositionedItem(
+                                context: context,
+                                item: items[index],
+                                allRoots: roots,
+                                index: index,
+                                columns: columns,
+                                width: resolvedWidth,
+                                height: rowHeights[index ~/ columns],
+                                animationDuration: layoutAnimationDuration,
+                                left:
+                                    (index % columns) *
+                                    (resolvedWidth + EventBoardView.spacing),
+                                top: rowOffsets[index ~/ columns],
+                              ),
+                          ],
+                        ),
                       ),
                     ),
             ),
@@ -169,6 +214,7 @@ class _EventBoardViewState extends State<EventBoardView> {
     required int columns,
     required double width,
     required double height,
+    required Duration animationDuration,
     required double left,
     required double top,
   }) {
@@ -176,7 +222,6 @@ class _EventBoardViewState extends State<EventBoardView> {
         ? DragTarget<String>(
             onWillAcceptWithDetails: (_) => true,
             onMove: (_) => _previewAtEnd(),
-            onAcceptWithDetails: (_) => _commitPreviewOrder(),
             builder: (context, candidates, _) => _NewEventCard(
               onPressed: () => _createEvent(context),
               dropTargeted: candidates.isNotEmpty,
@@ -198,7 +243,6 @@ class _EventBoardViewState extends State<EventBoardView> {
                   : local.dx > left + width / 2;
               _previewAround(item.id, after: after);
             },
-            onAcceptWithDetails: (_) => _commitPreviewOrder(),
             builder: (context, candidates, _) => _EventCard(
               controller: widget.controller,
               node: item,
@@ -220,7 +264,7 @@ class _EventBoardViewState extends State<EventBoardView> {
 
     return AnimatedPositioned(
       key: ValueKey<String>('event-layout-${item?.id ?? 'new'}'),
-      duration: const Duration(milliseconds: 160),
+      duration: animationDuration,
       curve: Curves.easeOutCubic,
       left: left,
       top: top,
@@ -235,12 +279,25 @@ class _EventBoardViewState extends State<EventBoardView> {
     );
   }
 
+  void _recordRenderedColumns(int columns) {
+    if (renderedColumns == columns) return;
+    if (renderedColumns != null) {
+      animateResponsiveReflow = true;
+      responsiveReflowTimer?.cancel();
+      responsiveReflowTimer = Timer(const Duration(milliseconds: 140), () {
+        if (mounted) setState(() => animateResponsiveReflow = false);
+      });
+    }
+    renderedColumns = columns;
+  }
+
   void _startDragging(String id, List<TodoNode> roots) {
     boardFocusNode.requestFocus();
     setState(() {
       draggedEventId = id;
       dragStartRootIds = roots.map((root) => root.id).toList();
       previewRootIds = List<String>.of(dragStartRootIds!);
+      latestDragPosition = null;
       dragCanceled = false;
     });
   }
@@ -275,7 +332,16 @@ class _EventBoardViewState extends State<EventBoardView> {
   }
 
   void _endDragging(DraggableDetails details) {
-    if (!details.wasAccepted) _clearDragging();
+    if (draggedEventId == null) return;
+    final previewChanged =
+        previewRootIds != null &&
+        dragStartRootIds != null &&
+        !listEquals(previewRootIds, dragStartRootIds);
+    if (!dragCanceled && previewChanged && _isInsideBoard(latestDragPosition)) {
+      _commitPreviewOrder();
+    } else {
+      _clearDragging();
+    }
   }
 
   void _clearDragging() {
@@ -285,6 +351,7 @@ class _EventBoardViewState extends State<EventBoardView> {
       draggedEventId = null;
       previewRootIds = null;
       dragStartRootIds = null;
+      latestDragPosition = null;
       dragCanceled = false;
     });
   }
@@ -300,6 +367,7 @@ class _EventBoardViewState extends State<EventBoardView> {
   }
 
   void _updateEventAutoScroll(DragUpdateDetails details) {
+    latestDragPosition = details.globalPosition;
     final renderObject =
         scrollViewportKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderObject == null || !boardScrollController.hasClients) return;
@@ -328,6 +396,15 @@ class _EventBoardViewState extends State<EventBoardView> {
       );
       boardScrollController.jumpTo(next);
     });
+  }
+
+  bool _isInsideBoard(Offset? globalPosition) {
+    if (globalPosition == null) return false;
+    final renderObject =
+        scrollViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderObject == null) return false;
+    final local = renderObject.globalToLocal(globalPosition);
+    return (Offset.zero & renderObject.size).contains(local);
   }
 
   void _stopEventAutoScroll() {
@@ -366,14 +443,19 @@ class _EventBoardViewState extends State<EventBoardView> {
   }
 }
 
-double _preferredCardHeight(NodeTree tree, TodoNode node) {
+double _preferredCardHeight(
+  NodeTree tree,
+  TodoNode node, {
+  required double minimumHeight,
+  required double maximumHeight,
+}) {
   final visibleRows = tree
       .descendantsOf(node.id)
       .length
       .clamp(0, EventBoardView.previewRowLimit);
   final hidden = tree.descendantsOf(node.id).length > visibleRows;
   return (225 + visibleRows * 36 + (hidden ? 28 : 0))
-      .clamp(EventBoardView.minimumCardHeight, EventBoardView.maximumCardHeight)
+      .clamp(minimumHeight, maximumHeight)
       .toDouble();
 }
 
@@ -417,19 +499,237 @@ class _EventCard extends StatefulWidget {
 
 class _EventCardState extends State<_EventCard> {
   final Set<String> collapsedIds = <String>{};
+  final Set<String> expandedBeyondPreviewIds = <String>{};
   final ScrollController treeScrollController = ScrollController();
   final FocusNode cardFocusNode = FocusNode(debugLabel: 'event-card');
+  final TextEditingController inlineDraftController = TextEditingController();
+  final TextEditingController inlineRenameController = TextEditingController();
+  final GlobalKey inlineDraftKey = GlobalKey();
+  final GlobalKey treeViewportKey = GlobalKey();
+  late final FocusNode inlineDraftFocusNode = FocusNode(
+    debugLabel: 'event-inline-task-draft',
+  )..addListener(_handleInlineDraftFocusChange);
+  late final FocusNode inlineRenameFocusNode = FocusNode(
+    debugLabel: 'event-inline-task-rename',
+  )..addListener(_handleInlineRenameFocusChange);
   Timer? highlightTimer;
   String? highlightedId;
+  String? inlineDraftParentId;
+  String? inlineRenameNodeId;
+  String? inlineRenameOriginalTitle;
   bool cardHovered = false;
   bool cardDragging = false;
+  bool inlineDraftSubmitting = false;
+  bool inlineRenameSubmitting = false;
+  bool inlineRenameFailed = false;
 
   @override
   void dispose() {
     highlightTimer?.cancel();
+    inlineDraftFocusNode.removeListener(_handleInlineDraftFocusChange);
+    inlineDraftFocusNode.dispose();
+    inlineDraftController.dispose();
+    inlineRenameFocusNode.removeListener(_handleInlineRenameFocusChange);
+    inlineRenameFocusNode.dispose();
+    inlineRenameController.dispose();
     treeScrollController.dispose();
     cardFocusNode.dispose();
     super.dispose();
+  }
+
+  void _handleInlineDraftFocusChange() {
+    if (inlineDraftFocusNode.hasFocus ||
+        inlineDraftParentId == null ||
+        inlineDraftSubmitting) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted &&
+          !inlineDraftFocusNode.hasFocus &&
+          inlineDraftParentId != null &&
+          !inlineDraftSubmitting) {
+        unawaited(_finishInlineDraft());
+      }
+    });
+  }
+
+  Future<void> _openInlineDraft(String parentId) async {
+    if (inlineDraftParentId == parentId) {
+      inlineDraftFocusNode.requestFocus();
+      return;
+    }
+    if (inlineRenameNodeId != null) await _finishInlineRename();
+    if (inlineRenameNodeId != null || !mounted) return;
+    if (inlineDraftParentId != null) await _finishInlineDraft();
+    if (!mounted) return;
+    inlineDraftController.clear();
+    setState(() {
+      inlineDraftParentId = parentId;
+      collapsedIds.remove(parentId);
+      expandedBeyondPreviewIds.add(parentId);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || inlineDraftParentId != parentId) return;
+      inlineDraftFocusNode.requestFocus();
+      _revealInlineDraft();
+    });
+  }
+
+  void _revealInlineDraft() {
+    if (!treeScrollController.hasClients) return;
+    final draftBox =
+        inlineDraftKey.currentContext?.findRenderObject() as RenderBox?;
+    final viewportBox =
+        treeViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (draftBox == null || viewportBox == null) return;
+    final draftRect = MatrixUtils.transformRect(
+      draftBox.getTransformTo(viewportBox),
+      Offset.zero & draftBox.size,
+    );
+    final delta = draftRect.bottom > viewportBox.size.height
+        ? draftRect.bottom - viewportBox.size.height
+        : draftRect.top < 0
+        ? draftRect.top
+        : 0.0;
+    if (delta == 0) return;
+    final position = treeScrollController.position;
+    final target = (position.pixels + delta).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    unawaited(
+      treeScrollController.animateTo(
+        target,
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+      ),
+    );
+  }
+
+  Future<void> _finishInlineDraft() async {
+    final parentId = inlineDraftParentId;
+    if (parentId == null || inlineDraftSubmitting) return;
+    final title = inlineDraftController.text.trim();
+    if (title.isEmpty) {
+      _closeInlineDraft();
+      return;
+    }
+    setState(() => inlineDraftSubmitting = true);
+    final created = await widget.controller.create(
+      parentId: parentId,
+      title: title,
+      selectCreated: false,
+    );
+    if (!mounted) return;
+    if (created == null) {
+      setState(() => inlineDraftSubmitting = false);
+      inlineDraftFocusNode.requestFocus();
+      return;
+    }
+    highlightCreated(created.id);
+    _closeInlineDraft();
+  }
+
+  void _closeInlineDraft() {
+    if (inlineDraftParentId == null) return;
+    inlineDraftController.clear();
+    setState(() {
+      inlineDraftParentId = null;
+      inlineDraftSubmitting = false;
+    });
+    inlineDraftFocusNode.unfocus();
+  }
+
+  void _handleInlineRenameFocusChange() {
+    if (inlineRenameFocusNode.hasFocus ||
+        inlineRenameNodeId == null ||
+        inlineRenameSubmitting) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted &&
+          !inlineRenameFocusNode.hasFocus &&
+          inlineRenameNodeId != null &&
+          !inlineRenameSubmitting) {
+        unawaited(_finishInlineRename());
+      }
+    });
+  }
+
+  Future<void> _openInlineRename(TodoNode node) async {
+    if (inlineRenameNodeId == node.id) {
+      inlineRenameFocusNode.requestFocus();
+      return;
+    }
+    if (inlineDraftParentId != null) await _finishInlineDraft();
+    if (inlineDraftParentId != null || !mounted) return;
+    if (inlineRenameNodeId != null) await _finishInlineRename();
+    if (inlineRenameNodeId != null || !mounted) return;
+    inlineRenameController.text = node.title;
+    inlineRenameController.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: node.title.length,
+    );
+    setState(() {
+      inlineRenameNodeId = node.id;
+      inlineRenameOriginalTitle = node.title;
+      inlineRenameFailed = false;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && inlineRenameNodeId == node.id) {
+        inlineRenameFocusNode.requestFocus();
+      }
+    });
+  }
+
+  Future<void> _finishInlineRename() async {
+    final nodeId = inlineRenameNodeId;
+    final originalTitle = inlineRenameOriginalTitle;
+    if (nodeId == null || originalTitle == null || inlineRenameSubmitting) {
+      return;
+    }
+    final title = inlineRenameController.text.trim();
+    if (title.isEmpty || title == originalTitle) {
+      _closeInlineRename();
+      return;
+    }
+    setState(() {
+      inlineRenameSubmitting = true;
+      inlineRenameFailed = false;
+    });
+    await widget.controller.updateTitle(nodeId, title);
+    if (!mounted) return;
+    if (widget.controller.error != null) {
+      setState(() {
+        inlineRenameSubmitting = false;
+        inlineRenameFailed = true;
+      });
+      inlineRenameFocusNode.requestFocus();
+      return;
+    }
+    _closeInlineRename();
+  }
+
+  void _closeInlineRename() {
+    if (inlineRenameNodeId == null) return;
+    inlineRenameController.clear();
+    setState(() {
+      inlineRenameNodeId = null;
+      inlineRenameOriginalTitle = null;
+      inlineRenameSubmitting = false;
+      inlineRenameFailed = false;
+    });
+    inlineRenameFocusNode.unfocus();
+  }
+
+  Future<void> _deleteTaskNode(TodoNode node) async {
+    if (inlineDraftParentId != null) await _finishInlineDraft();
+    if (inlineDraftParentId != null || !mounted) return;
+    if (inlineRenameNodeId != null) await _finishInlineRename();
+    if (inlineRenameNodeId != null || !mounted) return;
+    await _deleteNode(context, widget.controller, node);
   }
 
   void highlightCreated(String nodeId) {
@@ -737,30 +1037,67 @@ class _EventCardState extends State<_EventCard> {
                         )
                       : Builder(
                           builder: (context) {
-                            return Scrollbar(
-                              key: ValueKey<String>(
-                                'event-tree-scrollbar-${node.id}',
-                              ),
-                              controller: treeScrollController,
-                              thumbVisibility: true,
-                              interactive: true,
-                              radius: const Radius.circular(4),
-                              child: _EventTaskGroup(
+                            return KeyedSubtree(
+                              key: treeViewportKey,
+                              child: Scrollbar(
                                 key: ValueKey<String>(
-                                  'event-tree-scroll-${node.id}',
+                                  'event-tree-scrollbar-${node.id}',
                                 ),
-                                controller: controller,
-                                tree: tree,
-                                parentId: node.id,
-                                depth: 0,
-                                collapsedIds: collapsedIds,
-                                highlightedId: highlightedId,
-                                scrollController: treeScrollController,
-                                onToggleExpanded: (nodeId) => setState(() {
-                                  if (!collapsedIds.add(nodeId)) {
-                                    collapsedIds.remove(nodeId);
-                                  }
-                                }),
+                                controller: treeScrollController,
+                                thumbVisibility: true,
+                                interactive: true,
+                                radius: const Radius.circular(4),
+                                child: _EventTaskGroup(
+                                  key: ValueKey<String>(
+                                    'event-tree-scroll-${node.id}',
+                                  ),
+                                  controller: controller,
+                                  tree: tree,
+                                  parentId: node.id,
+                                  depth: 0,
+                                  collapsedIds: collapsedIds,
+                                  expandedBeyondPreviewIds:
+                                      expandedBeyondPreviewIds,
+                                  highlightedId: highlightedId,
+                                  inlineDraftParentId: inlineDraftParentId,
+                                  inlineRenameNodeId: inlineRenameNodeId,
+                                  scrollController: treeScrollController,
+                                  inlineDraftBuilder: (depth) =>
+                                      _InlineTaskDraftRow(
+                                        key: inlineDraftKey,
+                                        depth: depth,
+                                        controller: inlineDraftController,
+                                        focusNode: inlineDraftFocusNode,
+                                        submitting: inlineDraftSubmitting,
+                                        onSubmit: _finishInlineDraft,
+                                        onCancel: _closeInlineDraft,
+                                      ),
+                                  inlineRenameBuilder: (node) =>
+                                      _InlineTaskRenameField(
+                                        nodeId: node.id,
+                                        controller: inlineRenameController,
+                                        focusNode: inlineRenameFocusNode,
+                                        submitting: inlineRenameSubmitting,
+                                        failed: inlineRenameFailed,
+                                        fontWeight:
+                                            tree.childrenOf(node.id).isEmpty
+                                            ? FontWeight.w500
+                                            : FontWeight.w600,
+                                        onSubmit: _finishInlineRename,
+                                        onCancel: _closeInlineRename,
+                                      ),
+                                  onCreateChild: (parentId) =>
+                                      unawaited(_openInlineDraft(parentId)),
+                                  onRename: (task) =>
+                                      unawaited(_openInlineRename(task)),
+                                  onDelete: (task) =>
+                                      unawaited(_deleteTaskNode(task)),
+                                  onToggleExpanded: (nodeId) => setState(() {
+                                    if (!collapsedIds.add(nodeId)) {
+                                      collapsedIds.remove(nodeId);
+                                    }
+                                  }),
+                                ),
                               ),
                             );
                           },
@@ -787,7 +1124,15 @@ class _EventTaskGroup extends StatefulWidget {
     required this.parentId,
     required this.depth,
     required this.collapsedIds,
+    required this.expandedBeyondPreviewIds,
     required this.highlightedId,
+    required this.inlineDraftParentId,
+    required this.inlineRenameNodeId,
+    required this.inlineDraftBuilder,
+    required this.inlineRenameBuilder,
+    required this.onCreateChild,
+    required this.onRename,
+    required this.onDelete,
     required this.onToggleExpanded,
     this.scrollController,
     super.key,
@@ -798,7 +1143,15 @@ class _EventTaskGroup extends StatefulWidget {
   final String parentId;
   final int depth;
   final Set<String> collapsedIds;
+  final Set<String> expandedBeyondPreviewIds;
   final String? highlightedId;
+  final String? inlineDraftParentId;
+  final String? inlineRenameNodeId;
+  final Widget Function(int depth) inlineDraftBuilder;
+  final Widget Function(TodoNode node) inlineRenameBuilder;
+  final ValueChanged<String> onCreateChild;
+  final ValueChanged<TodoNode> onRename;
+  final ValueChanged<TodoNode> onDelete;
   final ValueChanged<String> onToggleExpanded;
   final ScrollController? scrollController;
 
@@ -821,6 +1174,7 @@ class _EventTaskGroupState extends State<_EventTaskGroup> {
   @override
   Widget build(BuildContext context) {
     final children = widget.tree.childrenOf(widget.parentId);
+    final showsInlineDraft = widget.inlineDraftParentId == widget.parentId;
     final rootGroup = widget.scrollController != null;
     return Focus(
       focusNode: focusNode,
@@ -845,7 +1199,7 @@ class _EventTaskGroupState extends State<_EventTaskGroup> {
             ? const EdgeInsets.fromLTRB(10, 9, 16, 4)
             : EdgeInsets.zero,
         autoScrollerVelocityScalar: 34,
-        itemCount: children.length,
+        itemCount: children.length + (showsInlineDraft ? 1 : 0),
         onReorderStart: (index) {
           focusNode.requestFocus();
           setState(() => draggingId = children[index].id);
@@ -865,11 +1219,18 @@ class _EventTaskGroupState extends State<_EventTaskGroup> {
           ),
         ),
         itemBuilder: (context, index) {
+          if (index == children.length) {
+            return KeyedSubtree(
+              key: ValueKey<String>('event-inline-draft-${widget.parentId}'),
+              child: widget.inlineDraftBuilder(widget.depth),
+            );
+          }
           final node = children[index];
           final expanded = !widget.collapsedIds.contains(node.id);
           final canExpand =
               !widget.tree.isLeaf(node.id) &&
-              widget.depth < EventBoardView.maximumPreviewDepth;
+              (widget.depth < EventBoardView.maximumPreviewDepth ||
+                  widget.expandedBeyondPreviewIds.contains(node.id));
           return _EventTreeBranch(
             key: ValueKey<String>('event-task-branch-${node.id}'),
             controller: widget.controller,
@@ -880,6 +1241,7 @@ class _EventTaskGroupState extends State<_EventTaskGroup> {
             expanded: expanded,
             dragging: draggingId == node.id,
             highlighted: widget.highlightedId == node.id,
+            renaming: widget.inlineRenameNodeId == node.id,
             onToggleExpanded: canExpand
                 ? () => widget.onToggleExpanded(node.id)
                 : null,
@@ -890,7 +1252,15 @@ class _EventTaskGroupState extends State<_EventTaskGroup> {
               _reorder(children, index, newIndex);
             },
             collapsedIds: widget.collapsedIds,
+            expandedBeyondPreviewIds: widget.expandedBeyondPreviewIds,
             highlightedId: widget.highlightedId,
+            inlineDraftParentId: widget.inlineDraftParentId,
+            inlineRenameNodeId: widget.inlineRenameNodeId,
+            inlineDraftBuilder: widget.inlineDraftBuilder,
+            inlineRenameBuilder: widget.inlineRenameBuilder,
+            onCreateChild: widget.onCreateChild,
+            onRename: widget.onRename,
+            onDelete: widget.onDelete,
             onToggleChildExpanded: widget.onToggleExpanded,
           );
         },
@@ -902,7 +1272,7 @@ class _EventTaskGroupState extends State<_EventTaskGroup> {
     if (newIndex == oldIndex) return;
     final orderedIds = children.map((node) => node.id).toList();
     final movedId = orderedIds.removeAt(oldIndex);
-    orderedIds.insert(newIndex, movedId);
+    orderedIds.insert(newIndex.clamp(0, orderedIds.length), movedId);
     unawaited(widget.controller.reorderChildren(widget.parentId, orderedIds));
   }
 }
@@ -917,10 +1287,19 @@ class _EventTreeBranch extends StatelessWidget {
     required this.expanded,
     required this.dragging,
     required this.highlighted,
+    required this.renaming,
     required this.onToggleExpanded,
     required this.onKeyboardReorder,
     required this.collapsedIds,
+    required this.expandedBeyondPreviewIds,
     required this.highlightedId,
+    required this.inlineDraftParentId,
+    required this.inlineRenameNodeId,
+    required this.inlineDraftBuilder,
+    required this.inlineRenameBuilder,
+    required this.onCreateChild,
+    required this.onRename,
+    required this.onDelete,
     required this.onToggleChildExpanded,
     super.key,
   });
@@ -933,10 +1312,19 @@ class _EventTreeBranch extends StatelessWidget {
   final bool expanded;
   final bool dragging;
   final bool highlighted;
+  final bool renaming;
   final VoidCallback? onToggleExpanded;
   final void Function(int direction, bool toEdge) onKeyboardReorder;
   final Set<String> collapsedIds;
+  final Set<String> expandedBeyondPreviewIds;
   final String? highlightedId;
+  final String? inlineDraftParentId;
+  final String? inlineRenameNodeId;
+  final Widget Function(int depth) inlineDraftBuilder;
+  final Widget Function(TodoNode node) inlineRenameBuilder;
+  final ValueChanged<String> onCreateChild;
+  final ValueChanged<TodoNode> onRename;
+  final ValueChanged<TodoNode> onDelete;
   final ValueChanged<String> onToggleChildExpanded;
 
   @override
@@ -952,19 +1340,34 @@ class _EventTreeBranch extends StatelessWidget {
         expanded: expanded,
         dragging: dragging,
         highlighted: highlighted,
+        renaming: renaming,
         onToggleExpanded: onToggleExpanded,
         onKeyboardReorder: onKeyboardReorder,
+        onCreateChild: () => onCreateChild(node.id),
+        renameField: inlineRenameBuilder(node),
+        onRename: () => onRename(node),
+        onDelete: () => onDelete(node),
       ),
       if (expanded &&
-          depth < EventBoardView.maximumPreviewDepth &&
-          tree.childrenOf(node.id).isNotEmpty)
+          (depth < EventBoardView.maximumPreviewDepth ||
+              expandedBeyondPreviewIds.contains(node.id)) &&
+          (tree.childrenOf(node.id).isNotEmpty ||
+              inlineDraftParentId == node.id))
         _EventTaskGroup(
           controller: controller,
           tree: tree,
           parentId: node.id,
           depth: depth + 1,
           collapsedIds: collapsedIds,
+          expandedBeyondPreviewIds: expandedBeyondPreviewIds,
           highlightedId: highlightedId,
+          inlineDraftParentId: inlineDraftParentId,
+          inlineRenameNodeId: inlineRenameNodeId,
+          inlineDraftBuilder: inlineDraftBuilder,
+          inlineRenameBuilder: inlineRenameBuilder,
+          onCreateChild: onCreateChild,
+          onRename: onRename,
+          onDelete: onDelete,
           onToggleExpanded: onToggleChildExpanded,
         ),
     ],
@@ -981,8 +1384,13 @@ class _EventTreeRow extends StatefulWidget {
     required this.expanded,
     required this.dragging,
     required this.highlighted,
+    required this.renaming,
     required this.onToggleExpanded,
     required this.onKeyboardReorder,
+    required this.onCreateChild,
+    required this.renameField,
+    required this.onRename,
+    required this.onDelete,
   });
 
   final AppController controller;
@@ -993,8 +1401,13 @@ class _EventTreeRow extends StatefulWidget {
   final bool expanded;
   final bool dragging;
   final bool highlighted;
+  final bool renaming;
   final VoidCallback? onToggleExpanded;
   final void Function(int direction, bool toEdge) onKeyboardReorder;
+  final VoidCallback onCreateChild;
+  final Widget renameField;
+  final VoidCallback onRename;
+  final VoidCallback onDelete;
 
   @override
   State<_EventTreeRow> createState() => _EventTreeRowState();
@@ -1024,11 +1437,28 @@ class _EventTreeRowState extends State<_EventTreeRow> {
     final children = tree.childrenOf(node.id);
     final hiddenDescendants = tree.descendantsOf(node.id).length;
     final complete = tree.isComplete(node.id);
+    final showActions = (hovered || focused) && !widget.renaming;
+    final deleteButtonStyle = ButtonStyle(
+      foregroundColor: WidgetStateProperty.resolveWith(
+        (states) =>
+            states.contains(WidgetState.hovered) ? colors.danger : colors.muted,
+      ),
+      overlayColor: WidgetStateProperty.resolveWith(
+        (states) =>
+            states.contains(WidgetState.hovered) ? colors.dangerSoft : null,
+      ),
+    );
     return Focus(
+      key: ValueKey<String>('event-row-focus-${node.id}'),
       focusNode: focusNode,
       onFocusChange: (value) => setState(() => focused = value),
       onKeyEvent: (_, event) {
-        if (event is! KeyDownEvent || !HardwareKeyboard.instance.isAltPressed) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        if (event.logicalKey == LogicalKeyboardKey.f2 && !widget.renaming) {
+          widget.onRename();
+          return KeyEventResult.handled;
+        }
+        if (widget.renaming || !HardwareKeyboard.instance.isAltPressed) {
           return KeyEventResult.ignored;
         }
         if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
@@ -1051,7 +1481,9 @@ class _EventTreeRowState extends State<_EventTreeRow> {
         child: DecoratedBox(
           key: ValueKey<String>('event-row-surface-${node.id}'),
           decoration: BoxDecoration(
-            color: highlighted
+            color: widget.renaming
+                ? colors.accentSoft.withValues(alpha: 0.55)
+                : highlighted
                 ? colors.accentSoft
                 : hovered
                 ? colors.surfaceHover
@@ -1073,10 +1505,12 @@ class _EventTreeRowState extends State<_EventTreeRow> {
             child: GestureDetector(
               key: ValueKey<String>('event-row-${node.id}'),
               behavior: HitTestBehavior.opaque,
-              onTap: () {
-                focusNode.requestFocus();
-                controller.select(node.id);
-              },
+              onTap: widget.renaming
+                  ? null
+                  : () {
+                      focusNode.requestFocus();
+                      controller.select(node.id);
+                    },
               child: SizedBox(
                 height: 36,
                 child: Padding(
@@ -1084,21 +1518,30 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                   child: Row(
                     children: <Widget>[
                       SizedBox(
-                        width: 20,
+                        width: 18,
                         child: AnimatedOpacity(
-                          opacity: hovered || widget.dragging ? 1 : 0.45,
+                          opacity: widget.renaming
+                              ? 0.25
+                              : hovered || widget.dragging
+                              ? 1
+                              : 0.45,
                           duration: const Duration(milliseconds: 90),
-                          child: ReorderableDragStartListener(
-                            index: widget.reorderIndex,
-                            key: ValueKey<String>('event-task-drag-${node.id}'),
-                            child: Tooltip(
-                              message: '拖动同级排序 · ⌥↑↓ 键盘移动',
-                              child: MouseRegion(
-                                cursor: SystemMouseCursors.grab,
-                                child: Icon(
-                                  Icons.drag_indicator,
-                                  size: 16,
-                                  color: colors.muted,
+                          child: IgnorePointer(
+                            ignoring: widget.renaming,
+                            child: ReorderableDragStartListener(
+                              index: widget.reorderIndex,
+                              key: ValueKey<String>(
+                                'event-task-drag-${node.id}',
+                              ),
+                              child: Tooltip(
+                                message: '拖动同级排序 · ⌥↑↓ 键盘移动',
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.grab,
+                                  child: Icon(
+                                    Icons.drag_indicator,
+                                    size: 16,
+                                    color: colors.muted,
+                                  ),
                                 ),
                               ),
                             ),
@@ -1106,7 +1549,7 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                         ),
                       ),
                       SizedBox(
-                        width: 22,
+                        width: onToggleExpanded == null ? 8 : 18,
                         child: onToggleExpanded == null
                             ? null
                             : IconButton(
@@ -1116,7 +1559,9 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                                 tooltip: expanded ? '折叠' : '展开',
                                 padding: EdgeInsets.zero,
                                 visualDensity: VisualDensity.compact,
-                                onPressed: onToggleExpanded,
+                                onPressed: widget.renaming
+                                    ? null
+                                    : onToggleExpanded,
                                 icon: Icon(
                                   expanded
                                       ? Icons.keyboard_arrow_down
@@ -1128,7 +1573,7 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                       ),
                       InkResponse(
                         key: ValueKey<String>('event-complete-${node.id}'),
-                        onTap: children.isEmpty
+                        onTap: children.isEmpty && !widget.renaming
                             ? () => controller.setCompleted(node.id, !complete)
                             : null,
                         radius: 16,
@@ -1155,36 +1600,54 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                               : null,
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       Expanded(
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            key: ValueKey<String>('event-row-title-${node.id}'),
-                            node.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: complete ? colors.faint : null,
-                              fontSize: 12,
-                              fontWeight: children.isEmpty
-                                  ? FontWeight.w500
-                                  : FontWeight.w600,
-                              decoration: complete
-                                  ? TextDecoration.lineThrough
-                                  : null,
-                            ),
-                          ),
-                        ),
+                        child: widget.renaming
+                            ? widget.renameField
+                            : Align(
+                                alignment: Alignment.centerLeft,
+                                child: Tooltip(
+                                  message: '双击重命名',
+                                  waitDuration: const Duration(
+                                    milliseconds: 700,
+                                  ),
+                                  child: MouseRegion(
+                                    cursor: SystemMouseCursors.text,
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onDoubleTap: widget.onRename,
+                                      child: Text(
+                                        key: ValueKey<String>(
+                                          'event-row-title-${node.id}',
+                                        ),
+                                        node.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: complete ? colors.faint : null,
+                                          fontSize: 12,
+                                          fontWeight: children.isEmpty
+                                              ? FontWeight.w500
+                                              : FontWeight.w600,
+                                          decoration: complete
+                                              ? TextDecoration.lineThrough
+                                              : null,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
                       ),
-                      if (node.deadline != null && !hovered)
+                      if (node.deadline != null && !hovered && !widget.renaming)
                         Text(
                           formatCompactDate(node.deadline!),
                           style: TextStyle(color: colors.faint, fontSize: 9),
                         ),
                       if (children.isNotEmpty &&
                           onToggleExpanded == null &&
-                          !hovered) ...<Widget>[
+                          !hovered &&
+                          !widget.renaming) ...<Widget>[
                         const SizedBox(width: 8),
                         Text(
                           '$hiddenDescendants 项',
@@ -1196,10 +1659,10 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                       ],
                       AnimatedOpacity(
                         key: ValueKey<String>('event-row-actions-${node.id}'),
-                        opacity: hovered ? 1 : 0,
+                        opacity: showActions ? 1 : 0,
                         duration: const Duration(milliseconds: 120),
                         child: IgnorePointer(
-                          ignoring: !hovered,
+                          ignoring: !showActions,
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: <Widget>[
@@ -1214,40 +1677,31 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                                   height: 30,
                                 ),
                                 visualDensity: VisualDensity.compact,
-                                onPressed: () =>
-                                    _createChildNode(context, controller, node),
+                                mouseCursor: SystemMouseCursors.click,
+                                onPressed: widget.onCreateChild,
                                 icon: Icon(
                                   Icons.add,
                                   size: 16,
                                   color: colors.muted,
                                 ),
                               ),
-                              MenuAnchor(
-                                menuChildren: <Widget>[
-                                  MenuItemButton(
-                                    onPressed: () =>
-                                        _renameNode(context, controller, node),
-                                    child: const Text('重命名'),
-                                  ),
-                                  MenuItemButton(
-                                    onPressed: () =>
-                                        _deleteNode(context, controller, node),
-                                    child: const Text('删除'),
-                                  ),
-                                ],
-                                builder: (context, menu, _) => IconButton(
-                                  key: ValueKey<String>(
-                                    'event-row-menu-${node.id}',
-                                  ),
-                                  tooltip: '任务操作',
-                                  padding: EdgeInsets.zero,
-                                  visualDensity: VisualDensity.compact,
-                                  onPressed: menu.open,
-                                  icon: Icon(
-                                    Icons.more_horiz,
-                                    size: 16,
-                                    color: colors.muted,
-                                  ),
+                              IconButton(
+                                key: ValueKey<String>(
+                                  'event-delete-task-${node.id}',
+                                ),
+                                tooltip: '删除任务',
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints.tightFor(
+                                  width: 28,
+                                  height: 30,
+                                ),
+                                visualDensity: VisualDensity.compact,
+                                mouseCursor: SystemMouseCursors.click,
+                                style: deleteButtonStyle,
+                                onPressed: widget.onDelete,
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  size: 16,
                                 ),
                               ),
                             ],
@@ -1258,6 +1712,235 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                   ),
                 ),
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineTaskRenameField extends StatelessWidget {
+  const _InlineTaskRenameField({
+    required this.nodeId,
+    required this.controller,
+    required this.focusNode,
+    required this.submitting,
+    required this.failed,
+    required this.fontWeight,
+    required this.onSubmit,
+    required this.onCancel,
+  });
+
+  final String nodeId;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final bool submitting;
+  final bool failed;
+  final FontWeight fontWeight;
+  final VoidCallback onSubmit;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    return Focus(
+      onKeyEvent: (_, event) {
+        if (event is KeyDownEvent &&
+            event.logicalKey == LogicalKeyboardKey.escape) {
+          onCancel();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Semantics(
+        textField: true,
+        label: '重命名任务',
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final showKeyboardHint = constraints.maxWidth >= 190;
+            return Row(
+              children: <Widget>[
+                Expanded(
+                  child: TextField(
+                    key: ValueKey<String>('event-inline-rename-$nodeId'),
+                    controller: controller,
+                    focusNode: focusNode,
+                    enabled: !submitting,
+                    autofocus: true,
+                    onSubmitted: (_) => onSubmit(),
+                    onTapOutside: (_) => focusNode.unfocus(),
+                    textInputAction: TextInputAction.done,
+                    style: TextStyle(fontSize: 12, fontWeight: fontWeight),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      filled: false,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ),
+                if (submitting)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 8),
+                    child: SizedBox.square(
+                      dimension: 12,
+                      child: CircularProgressIndicator(strokeWidth: 1.5),
+                    ),
+                  )
+                else if (failed)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Tooltip(
+                      message: '保存失败，请重试',
+                      child: Icon(
+                        Icons.error_outline,
+                        size: 15,
+                        color: colors.danger,
+                      ),
+                    ),
+                  )
+                else if (showKeyboardHint)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Text(
+                      '↵ 保存  ·  Esc 取消',
+                      style: TextStyle(color: colors.faint, fontSize: 9),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineTaskDraftRow extends StatelessWidget {
+  const _InlineTaskDraftRow({
+    required this.depth,
+    required this.controller,
+    required this.focusNode,
+    required this.submitting,
+    required this.onSubmit,
+    required this.onCancel,
+    super.key,
+  });
+
+  final int depth;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final bool submitting;
+  final VoidCallback onSubmit;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final animationsDisabled = MediaQuery.disableAnimationsOf(context);
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: animationsDisabled
+          ? Duration.zero
+          : const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+      builder: (context, value, child) => ClipRect(
+        child: Align(
+          alignment: Alignment.topCenter,
+          heightFactor: value,
+          child: Opacity(opacity: value, child: child),
+        ),
+      ),
+      child: Focus(
+        onKeyEvent: (_, event) {
+          if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.escape) {
+            onCancel();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: Semantics(
+          textField: true,
+          label: '新建子任务',
+          child: Container(
+            key: const ValueKey<String>('event-inline-draft-surface'),
+            height: 36,
+            padding: EdgeInsets.only(left: depth * 20),
+            decoration: BoxDecoration(
+              color: colors.accentSoft.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final showKeyboardHint =
+                    constraints.maxWidth - depth * 20 >= 245;
+                return Row(
+                  children: <Widget>[
+                    const SizedBox(width: 18),
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 15,
+                      height: 15,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: colors.faint, width: 1.2),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: TextField(
+                        key: const ValueKey<String>('event-inline-draft-input'),
+                        controller: controller,
+                        focusNode: focusNode,
+                        enabled: !submitting,
+                        autofocus: true,
+                        onSubmitted: (_) => onSubmit(),
+                        onTapOutside: (_) => focusNode.unfocus(),
+                        textInputAction: TextInputAction.done,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: '输入子任务名称…',
+                          hintStyle: TextStyle(
+                            color: colors.faint,
+                            fontSize: 12,
+                          ),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          filled: false,
+                          isDense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    ),
+                    if (submitting)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 8),
+                        child: SizedBox.square(
+                          dimension: 12,
+                          child: CircularProgressIndicator(strokeWidth: 1.5),
+                        ),
+                      )
+                    else if (showKeyboardHint)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Text(
+                          '↵ 创建  ·  Esc 取消',
+                          style: TextStyle(color: colors.faint, fontSize: 9),
+                        ),
+                      ),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -1501,27 +2184,6 @@ Future<void> _renameNode(
   if (title != null && title.trim().isNotEmpty) {
     await controller.updateTitle(node.id, title);
   }
-}
-
-Future<void> _createChildNode(
-  BuildContext context,
-  AppController controller,
-  TodoNode parent,
-) async {
-  final title = await showDialog<String>(
-    context: context,
-    builder: (context) => const CreateNodeDialog(
-      title: '新建子任务',
-      fieldLabel: '任务名称',
-      hintText: '输入子任务名称',
-    ),
-  );
-  if (title == null || title.trim().isEmpty) return;
-  await controller.create(
-    parentId: parent.id,
-    title: title,
-    selectCreated: false,
-  );
 }
 
 Future<void> _deleteNode(
