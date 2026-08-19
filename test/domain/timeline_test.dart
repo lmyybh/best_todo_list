@@ -69,15 +69,19 @@ void main() {
     expect(result.map((entry) => entry.node.id), <String>['leaf']);
   });
 
-  test('默认隐藏已完成，开启后按 completedAt 倒序', () {
+  test('已完成任务按完成自然日归档并按 completedAt 倒序', () {
     final tree = NodeTree(<TodoNode>[
-      node('old', completedAt: DateTime.utc(2026, 8, 9)),
-      node('new', completedAt: DateTime.utc(2026, 8, 10)),
+      node(
+        'old',
+        deadline: DateTime(2026, 8, 12),
+        completedAt: DateTime.utc(2026, 8, 11, 1),
+      ),
+      node('new', completedAt: DateTime.utc(2026, 8, 11, 2)),
+      node('other-day', completedAt: DateTime.utc(2026, 8, 10, 2)),
     ]);
-    expect(TimelineQuery(now).laterEntries(tree, now), isEmpty);
-    final shown = TimelineQuery(
-      now,
-    ).laterEntries(tree, now, showCompleted: true);
+    final query = TimelineQuery(now);
+    expect(query.entriesForDate(tree, DateTime(2026, 8, 12)), isEmpty);
+    final shown = query.completedEntriesForDate(tree, now);
     expect(shown.map((entry) => entry.node.id), <String>['new', 'old']);
   });
 
@@ -123,7 +127,7 @@ void main() {
     expect(result.map((entry) => entry.node.id), <String>['a', 'b']);
   });
 
-  test('按日计数默认不包含已完成任务', () {
+  test('按日计数包含当天到期未完成和当天完成的任务', () {
     final tree = NodeTree(<TodoNode>[
       node('open', deadline: DateTime(2026, 8, 11, 9)),
       node(
@@ -132,6 +136,6 @@ void main() {
         completedAt: DateTime.utc(2026, 8, 11, 10),
       ),
     ]);
-    expect(TimelineQuery(now).countForDate(tree, now), 1);
+    expect(TimelineQuery(now).countForDate(tree, now), 2);
   });
 }

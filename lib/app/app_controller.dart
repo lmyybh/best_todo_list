@@ -27,7 +27,6 @@ class AppController extends ChangeNotifier {
   bool _timelineWindowWasMoved = false;
 
   AppView view = AppView.events;
-  bool showCompleted = false;
   final Set<String> expandedIds = <String>{};
 
   List<TodoNode> get nodes => List<TodoNode>.unmodifiable(_nodes);
@@ -48,15 +47,18 @@ class AppController extends ChangeNotifier {
     (index) => _timelineWindowStart.add(Duration(days: index)),
   );
   List<TimelineEntry> get selectedDateEntries => _timelineLaterSelected
-      ? TimelineQuery(
-          _now,
-        ).laterEntries(tree, timelineDates.last, showCompleted: showCompleted)
+      ? TimelineQuery(_now).laterEntries(tree, timelineDates.last)
       : TimelineQuery(_now).entriesForDate(
           tree,
           _selectedTimelineDate,
-          showCompleted: showCompleted,
           includeOverdue: _sameDate(_selectedTimelineDate, _now),
         );
+
+  List<TimelineEntry> get selectedDateCompletedEntries => _timelineLaterSelected
+      ? const <TimelineEntry>[]
+      : TimelineQuery(
+          _now,
+        ).completedEntriesForDate(tree, _selectedTimelineDate);
 
   int timelineCount(DateTime date) =>
       TimelineQuery(_now).countForDate(tree, date);
@@ -105,11 +107,6 @@ class AppController extends ChangeNotifier {
 
   void setView(AppView next) {
     view = next;
-    notifyListeners();
-  }
-
-  void setShowCompleted(bool value) {
-    showCompleted = value;
     notifyListeners();
   }
 

@@ -15,6 +15,7 @@ class TimelineView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final entries = controller.selectedDateEntries;
+    final completed = controller.selectedDateCompletedEntries;
     final overdue =
         !controller.timelineLaterSelected &&
             _sameDate(controller.selectedTimelineDate, controller.now)
@@ -50,9 +51,9 @@ class TimelineView extends StatelessWidget {
           child: Column(
             children: <Widget>[
               _DateNavigator(controller: controller),
-              _TimelineOptions(controller: controller),
+              _TimelineContext(controller: controller),
               Expanded(
-                child: entries.isEmpty
+                child: entries.isEmpty && completed.isEmpty
                     ? const _TimelineEmpty()
                     : ListView(
                         key: const ValueKey<String>('timeline-task-list'),
@@ -85,6 +86,18 @@ class TimelineView extends StatelessWidget {
                             (entry) =>
                                 _Entry(controller: controller, entry: entry),
                           ),
+                          if (completed.isNotEmpty) ...<Widget>[
+                            const SizedBox(height: 20),
+                            _TimelineSection(
+                              title: '已完成',
+                              count: completed.length,
+                            ),
+                            const SizedBox(height: 10),
+                            ...completed.map(
+                              (entry) =>
+                                  _Entry(controller: controller, entry: entry),
+                            ),
+                          ],
                         ],
                       ),
               ),
@@ -325,29 +338,22 @@ class _DateSurface extends StatelessWidget {
   }
 }
 
-class _TimelineOptions extends StatelessWidget {
-  const _TimelineOptions({required this.controller});
+class _TimelineContext extends StatelessWidget {
+  const _TimelineContext({required this.controller});
 
   final AppController controller;
 
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(30, 14, 30, 8),
-    child: Row(
-      children: <Widget>[
-        Text(
-          controller.timelineLaterSelected
-              ? '更晚的任务'
-              : '${controller.selectedTimelineDate.month} 月 ${controller.selectedTimelineDate.day} 日',
-          style: TextStyle(color: AppColors.of(context).muted, fontSize: 10),
-        ),
-        const Spacer(),
-        Switch.adaptive(
-          value: controller.showCompleted,
-          onChanged: controller.setShowCompleted,
-        ),
-        const Text('显示已完成', style: TextStyle(fontSize: 10)),
-      ],
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        controller.timelineLaterSelected
+            ? '更晚的任务'
+            : '${controller.selectedTimelineDate.month} 月 ${controller.selectedTimelineDate.day} 日',
+        style: TextStyle(color: AppColors.of(context).muted, fontSize: 10),
+      ),
     ),
   );
 }

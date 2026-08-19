@@ -234,9 +234,11 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('时间线切换和已完成开关可用', (tester) async {
+  testWidgets('时间线固定展示按完成日期归档的已完成任务', (tester) async {
     final root = await controller.create(title: '有日期任务');
     await controller.updateDeadline(root!.id, DateTime(2026, 8, 11, 16));
+    final completed = await controller.create(title: '今天完成的任务');
+    await controller.setCompleted(completed!.id, true);
     await tester.binding.setSurfaceSize(const Size(1100, 760));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(TodoApp(controller: controller));
@@ -259,7 +261,9 @@ void main() {
     expect(find.text('回到今天'), findsOneWidget);
     expect(find.text('今天'), findsWidgets);
     expect(find.text('有日期任务'), findsOneWidget);
-    expect(find.byType(Switch), findsOneWidget);
+    expect(find.text('已完成'), findsOneWidget);
+    expect(find.text('今天完成的任务'), findsOneWidget);
+    expect(find.byType(Switch), findsNothing);
 
     appNow = DateTime(2026, 8, 12, 0, 1);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
