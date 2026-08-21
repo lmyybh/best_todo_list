@@ -11,7 +11,7 @@ class AppDatabase {
     return factory.openDatabase(
       databasePath,
       options: OpenDatabaseOptions(
-        version: 2,
+        version: 3,
         onConfigure: (database) async {
           await database.execute('PRAGMA foreign_keys = ON');
         },
@@ -23,6 +23,7 @@ class AppDatabase {
               title TEXT NOT NULL,
               notes TEXT NOT NULL DEFAULT '',
               deadline INTEGER NULL,
+              deadline_has_time INTEGER NOT NULL DEFAULT 0,
               created_at INTEGER NOT NULL,
               updated_at INTEGER NOT NULL,
               completed_at INTEGER NULL,
@@ -48,6 +49,14 @@ class AppDatabase {
           if (oldVersion < 2) {
             await database.execute(
               "ALTER TABLE nodes ADD COLUMN notes TEXT NOT NULL DEFAULT ''",
+            );
+          }
+          if (oldVersion < 3) {
+            await database.execute(
+              'ALTER TABLE nodes ADD COLUMN deadline_has_time INTEGER NOT NULL DEFAULT 0',
+            );
+            await database.execute(
+              'UPDATE nodes SET deadline_has_time = 1 WHERE deadline IS NOT NULL',
             );
           }
         },

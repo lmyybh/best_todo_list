@@ -1,6 +1,7 @@
-String formatDeadline(DateTime? value) {
-  if (value == null) return '未设置截止时间';
+String formatDeadline(DateTime? value, {bool hasTime = true}) {
+  if (value == null) return '未设置截止日期';
   final local = value.toLocal();
+  if (!hasTime) return '${local.month} 月 ${local.day} 日';
   return '${local.month} 月 ${local.day} 日，${_two(local.hour)}:${_two(local.minute)}';
 }
 
@@ -19,10 +20,21 @@ String formatCompactDate(DateTime value) {
   return '${local.month}/${local.day}';
 }
 
-bool isOverdue(DateTime? deadline, DateTime now) =>
-    deadline != null &&
-    deadline.toLocal().isBefore(now) &&
-    !_sameMinute(deadline.toLocal(), now);
+bool isOverdue(DateTime? deadline, DateTime now, {bool hasTime = true}) {
+  if (deadline == null) return false;
+  final local = deadline.toLocal();
+  if (!hasTime) {
+    return DateTime(local.year, local.month, local.day + 1).isBefore(now) ||
+        DateTime(local.year, local.month, local.day + 1).isAtSameMomentAs(now);
+  }
+  return local.isBefore(now) && !_sameMinute(local, now);
+}
+
+DateTime effectiveDeadline(DateTime deadline, {required bool hasTime}) {
+  final local = deadline.toLocal();
+  if (hasTime) return local;
+  return DateTime(local.year, local.month, local.day + 1);
+}
 
 bool isToday(DateTime? value, DateTime now) =>
     value != null &&

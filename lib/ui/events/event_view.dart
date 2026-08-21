@@ -301,44 +301,55 @@ class _EventHeader extends StatelessWidget {
             child: Row(
               children: <Widget>[
                 Expanded(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(8),
-                    onTap: () => _editDeadline(context, controller, node),
-                    child: Padding(
-                      padding: const EdgeInsets.all(4),
-                      child: Row(
-                        children: <Widget>[
-                          Icon(
-                            Icons.calendar_today_outlined,
-                            color: Theme.of(context).colorScheme.primary,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 11),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text(
-                                  '截止时间',
-                                  style: TextStyle(
-                                    color: colors.muted,
-                                    fontSize: 10,
-                                  ),
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  formatDeadline(node.deadline),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
+                  child: Builder(
+                    builder: (deadlineContext) => InkWell(
+                      mouseCursor: SystemMouseCursors.click,
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () => _editDeadline(
+                        context,
+                        deadlineContext,
+                        controller,
+                        node,
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Row(
+                          children: <Widget>[
+                            Icon(
+                              Icons.calendar_today_outlined,
+                              color: Theme.of(context).colorScheme.primary,
+                              size: 20,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 11),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Text(
+                                    '截止日期',
+                                    style: TextStyle(
+                                      color: colors.muted,
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    formatDeadline(
+                                      node.deadline,
+                                      hasTime: node.hasDeadlineTime,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -417,7 +428,7 @@ class _EventHeader extends StatelessWidget {
                 Icon(Icons.info_outline, size: 15, color: colors.muted),
                 const SizedBox(width: 6),
                 Text(
-                  '有子任务的截止时间晚于当前事件',
+                  '有子任务的截止日期晚于当前事件',
                   style: TextStyle(color: colors.muted, fontSize: 11),
                 ),
               ],
@@ -435,7 +446,15 @@ class _EventHeader extends StatelessWidget {
           .any(
             (child) =>
                 child.deadline != null &&
-                child.deadline!.isAfter(parent.deadline!),
+                effectiveDeadline(
+                  child.deadline!,
+                  hasTime: child.hasDeadlineTime,
+                ).isAfter(
+                  effectiveDeadline(
+                    parent.deadline!,
+                    hasTime: parent.hasDeadlineTime,
+                  ),
+                ),
           );
 }
 
@@ -895,18 +914,21 @@ class _InlineEmpty extends StatelessWidget {
 
 Future<void> _editDeadline(
   BuildContext context,
+  BuildContext anchorContext,
   AppController controller,
   TodoNode node,
 ) async {
-  final result = await showDialog<DeadlineDialogResult>(
+  final result = await showDeadlinePicker(
     context: context,
-    builder: (context) =>
-        DeadlineDialog(initialValue: node.deadline, now: controller.now),
+    anchorContext: anchorContext,
+    initialValue: node.deadline,
+    initialHasTime: node.hasDeadlineTime,
+    now: controller.now,
   );
   if (!context.mounted || result == null) return;
   switch (result) {
-    case SaveDeadline(:final value):
-      await controller.updateDeadline(node.id, value);
+    case SaveDeadline(:final value, :final hasTime):
+      await controller.updateDeadline(node.id, value, hasTime: hasTime);
     case ClearDeadline():
       await controller.updateDeadline(node.id, null);
   }

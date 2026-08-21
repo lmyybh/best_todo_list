@@ -22,7 +22,11 @@ class TimelineView extends StatelessWidget {
         ? entries
               .where(
                 (entry) =>
-                    isOverdue(entry.node.deadline, controller.now) &&
+                    isOverdue(
+                      entry.node.deadline,
+                      controller.now,
+                      hasTime: entry.node.hasDeadlineTime,
+                    ) &&
                     !entry.isComplete,
               )
               .toList()

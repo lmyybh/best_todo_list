@@ -34,6 +34,7 @@ class NodeService {
     String? parentId,
     required String title,
     DateTime? deadline,
+    bool deadlineHasTime = true,
   }) async {
     final cleanTitle = _validatedTitle(title);
     final nodes = await repository.loadNodes();
@@ -55,6 +56,7 @@ class NodeService {
       parentId: parentId,
       title: cleanTitle,
       deadline: deadline?.toUtc(),
+      deadlineHasTime: deadline != null && deadlineHasTime,
       createdAt: now,
       updatedAt: now,
       manualOrder: order,
@@ -86,11 +88,16 @@ class NodeService {
     );
   }
 
-  Future<void> updateDeadline(String nodeId, DateTime? deadline) async {
+  Future<void> updateDeadline(
+    String nodeId,
+    DateTime? deadline, {
+    bool hasTime = true,
+  }) async {
     final node = await _requireNode(nodeId);
     await repository.updateNode(
       node.copyWith(
         deadline: deadline?.toUtc(),
+        deadlineHasTime: deadline != null && hasTime,
         clearDeadline: deadline == null,
         updatedAt: clock().toUtc(),
       ),

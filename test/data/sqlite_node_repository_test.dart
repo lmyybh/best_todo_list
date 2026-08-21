@@ -8,7 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
-  test('版本 1 数据库升级后保留任务并支持备注', () async {
+  test('版本 1 数据库升级后保留任务并支持备注及截止时间语义', () async {
     final directory = await Directory.systemTemp.createTemp('todo_upgrade_');
     final path = p.join(directory.path, 'test.sqlite');
     final factory = databaseFactoryFfi;
@@ -36,6 +36,7 @@ void main() {
     await legacyDatabase.insert('nodes', <String, Object?>{
       'id': 'legacy-node',
       'title': '已有任务',
+      'deadline': DateTime.utc(2026, 8, 12, 10).millisecondsSinceEpoch,
       'created_at': created.millisecondsSinceEpoch,
       'updated_at': created.millisecondsSinceEpoch,
       'manual_order': 1000,
@@ -47,6 +48,7 @@ void main() {
     var restored = (await repository.loadNodes()).single;
     expect(restored.title, '已有任务');
     expect(restored.notes, isEmpty);
+    expect(restored.hasDeadlineTime, isTrue);
 
     restored = restored.copyWith(notes: '升级后的备注');
     await repository.updateNode(restored);
@@ -82,6 +84,7 @@ void main() {
     expect(restored.title, node.title);
     expect(restored.notes, node.notes);
     expect(restored.deadline, node.deadline);
+    expect(restored.hasDeadlineTime, isTrue);
     expect(restored.createdAt, created);
     expect(restored.completedAt, completed);
 

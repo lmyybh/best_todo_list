@@ -1003,7 +1003,7 @@ class _EventCardState extends State<_EventCard> {
                             style: TextStyle(color: colors.muted, fontSize: 10),
                           ),
                           const Spacer(),
-                          _DeadlineLabel(deadline: node.deadline, now: now),
+                          _DeadlineLabel(node: node, now: now),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -2069,17 +2069,21 @@ class _CardQuickAddState extends State<_CardQuickAdd> {
 }
 
 class _DeadlineLabel extends StatelessWidget {
-  const _DeadlineLabel({required this.deadline, required this.now});
+  const _DeadlineLabel({required this.node, required this.now});
 
-  final DateTime? deadline;
+  final TodoNode node;
   final DateTime now;
 
   @override
   Widget build(BuildContext context) {
-    if (deadline == null) return const SizedBox.shrink();
-    final overdue = isOverdue(deadline, now);
+    if (node.deadline == null) return const SizedBox.shrink();
+    final overdue = isOverdue(
+      node.deadline,
+      now,
+      hasTime: node.hasDeadlineTime,
+    );
     return Text(
-      overdue ? '已逾期' : formatCompactDate(deadline!),
+      overdue ? '已逾期' : formatCompactDate(node.deadline!),
       style: TextStyle(
         color: overdue ? AppColors.of(context).danger : AppTheme.accent,
         fontSize: 10,

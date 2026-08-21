@@ -146,12 +146,14 @@ class AppController extends ChangeNotifier {
     String? parentId,
     required String title,
     DateTime? deadline,
+    bool deadlineHasTime = true,
     bool selectCreated = true,
   }) => _write(() async {
     final node = await service.createNode(
       parentId: parentId,
       title: title,
       deadline: deadline,
+      deadlineHasTime: deadlineHasTime,
     );
     if (parentId != null) expandedIds.add(parentId);
     if (selectCreated) {
@@ -167,8 +169,12 @@ class AppController extends ChangeNotifier {
   Future<void> updateNotes(String nodeId, String notes) =>
       _write(() => service.updateNotes(nodeId, notes));
 
-  Future<void> updateDeadline(String nodeId, DateTime? deadline) =>
-      _write(() => service.updateDeadline(nodeId, deadline));
+  Future<void> updateDeadline(
+    String nodeId,
+    DateTime? deadline, {
+    bool hasTime = true,
+  }) =>
+      _write(() => service.updateDeadline(nodeId, deadline, hasTime: hasTime));
 
   Future<void> setCompleted(String nodeId, bool completed) =>
       _write(() => service.setLeafCompleted(nodeId, completed));

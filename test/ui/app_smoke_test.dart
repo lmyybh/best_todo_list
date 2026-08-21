@@ -501,22 +501,26 @@ void main() {
     }
   });
 
-  testWidgets('macOS 截止时间使用单个桌面表单弹窗', (tester) async {
+  testWidgets('macOS 截止日期使用固定双栏桌面浮层', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
     try {
+      DeadlineDialogResult? result;
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.light(),
-          home: Builder(
-            builder: (context) => TextButton(
-              onPressed: () => showDialog<DeadlineDialogResult>(
-                context: context,
-                builder: (context) => DeadlineDialog(
-                  initialValue: DateTime(2026, 8, 12, 9, 45),
-                  now: DateTime(2026, 8, 12, 8),
-                ),
+          home: Center(
+            child: Builder(
+              builder: (context) => TextButton(
+                onPressed: () async {
+                  result = await showDeadlinePicker(
+                    context: context,
+                    anchorContext: context,
+                    initialValue: DateTime(2026, 8, 12),
+                    now: DateTime(2026, 8, 12, 8),
+                  );
+                },
+                child: const Text('打开'),
               ),
-              child: const Text('打开'),
             ),
           ),
         ),
@@ -524,20 +528,38 @@ void main() {
       await tester.tap(find.text('打开'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(AlertDialog), findsOneWidget);
-      expect(find.byType(CalendarDatePicker), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(CalendarDatePicker), findsNothing);
+      expect(tester.getSize(find.byType(DeadlineDialog)), const Size(468, 348));
       expect(
-        find.byKey(const ValueKey<String>('deadline-hour')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('deadline-minute')),
+        find.byKey(const ValueKey<String>('deadline-calendar')),
         findsOneWidget,
       );
       expect(find.text('今天'), findsOneWidget);
       expect(find.text('明天'), findsOneWidget);
-      expect(find.text('清除'), findsOneWidget);
+      expect(find.text('下周一'), findsOneWidget);
+      expect(find.text('移除'), findsOneWidget);
       expect(find.byType(BottomSheet), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('deadline-time-field')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<TextFormField>(
+              find.byKey(const ValueKey<String>('deadline-time-field')),
+            )
+            .controller
+            ?.text,
+        '21:00',
+      );
+
+      await tester.tap(find.byKey(const ValueKey<String>('deadline-save')));
+      await tester.pumpAndSettle();
+      expect(result, isA<SaveDeadline>());
+      final saved = result! as SaveDeadline;
+      expect(saved.hasTime, isTrue);
+      expect(saved.value, DateTime(2026, 8, 12, 21));
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }
