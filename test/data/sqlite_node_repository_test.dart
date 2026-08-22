@@ -8,6 +8,30 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
+  test('旧数据库迁移到独立用户目录并保留 SQLite 辅助文件', () async {
+    final directory = await Directory.systemTemp.createTemp('todo_migrate_');
+    try {
+      final legacyPath = p.join(directory.path, 'legacy', 'todo.sqlite');
+      final databasePath = p.join(directory.path, 'data', 'todo.sqlite');
+      await Directory(p.dirname(legacyPath)).create(recursive: true);
+      await File(legacyPath).writeAsString('database');
+      await File('$legacyPath-wal').writeAsString('wal');
+      await File('$legacyPath-shm').writeAsString('shm');
+
+      await AppDatabase.migrateLegacyFiles(
+        legacyPath: legacyPath,
+        databasePath: databasePath,
+      );
+
+      expect(await File(databasePath).readAsString(), 'database');
+      expect(await File('$databasePath-wal').readAsString(), 'wal');
+      expect(await File('$databasePath-shm').readAsString(), 'shm');
+      expect(await File(legacyPath).readAsString(), 'database');
+    } finally {
+      await directory.delete(recursive: true);
+    }
+  });
+
   test('版本 1 数据库升级后保留任务并支持备注及截止时间语义', () async {
     final directory = await Directory.systemTemp.createTemp('todo_upgrade_');
     final path = p.join(directory.path, 'test.sqlite');

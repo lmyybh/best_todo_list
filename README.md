@@ -93,6 +93,18 @@ macOS:   build/macos/Build/Products/Release/todo.app
 Windows: build/windows/x64/runner/Release/
 ```
 
+Windows 可以进一步构建当前用户安装器。安装
+[Inno Setup](https://jrsoftware.org/isinfo.php) 后，在项目根目录执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/build_windows_installer.ps1
+```
+
+安装器输出到 `build/installer/`，默认安装到
+`%LOCALAPPDATA%\Programs\BestTodoList`，不需要管理员权限。
+Windows 数据库独立保存在
+`%LOCALAPPDATA%\BestTodoList\data\best_todo_list.sqlite`，覆盖升级和卸载不会删除任务数据。
+
 macOS 可以使用以下命令直接打开：
 
 ```sh

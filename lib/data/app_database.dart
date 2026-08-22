@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -5,9 +7,7 @@ class AppDatabase {
   static Future<Database> open({String? path}) async {
     sqfliteFfiInit();
     final factory = databaseFactoryFfi;
-    final databasePath =
-        path ??
-        p.join(await factory.getDatabasesPath(), 'best_todo_list.sqlite');
+    final databasePath = path ?? await _defaultPath(factory);
     return factory.openDatabase(
       databasePath,
       options: OpenDatabaseOptions(
@@ -62,5 +62,49 @@ class AppDatabase {
         },
       ),
     );
+  }
+
+  static Future<String> _defaultPath(DatabaseFactory factory) async {
+    final legacyPath = p.join(
+      await factory.getDatabasesPath(),
+      'best_todo_list.sqlite',
+    );
+    if (!Platform.isWindows) return legacyPath;
+
+    final localAppData = Platform.environment['LOCALAPPDATA'];
+    if (localAppData == null || localAppData.isEmpty) {
+      throw StateError('Windows LOCALAPPDATA is unavailable.');
+    }
+    final databasePath = p.join(
+      localAppData,
+      'BestTodoList',
+      'data',
+      'best_todo_list.sqlite',
+    );
+    await migrateLegacyFiles(
+      legacyPath: legacyPath,
+      databasePath: databasePath,
+    );
+    await Directory(p.dirname(databasePath)).create(recursive: true);
+    return databasePath;
+  }
+
+  static Future<void> migrateLegacyFiles({
+    required String legacyPath,
+    required String databasePath,
+  }) async {
+    if (p.equals(legacyPath, databasePath) ||
+        await File(databasePath).exists() ||
+        !await File(legacyPath).exists()) {
+      return;
+    }
+
+    await Directory(p.dirname(databasePath)).create(recursive: true);
+    for (final suffix in const <String>['-wal', '-shm', '']) {
+      final source = File('$legacyPath$suffix');
+      if (await source.exists()) {
+        await source.copy('$databasePath$suffix');
+      }
+    }
   }
 }

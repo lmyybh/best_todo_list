@@ -51,6 +51,17 @@
 
 ## 第二阶段：应用内安装
 
+### 阶段 2A：Windows 安装器
+
+- 使用 Inno Setup 生成单文件 Setup EXE，不发布 ZIP。
+- 采用当前用户安装，固定路径为
+  `%LOCALAPPDATA%\Programs\BestTodoList`，不要求管理员权限。
+- 使用固定 AppId 支持原地覆盖升级，并创建开始菜单与卸载入口。
+- 安装器只管理程序目录；Windows 数据库独立保存在
+  `%LOCALAPPDATA%\BestTodoList\data\best_todo_list.sqlite`，不随覆盖升级或卸载删除。
+- 通过 `scripts/build_windows_installer.ps1` 自动读取应用版本、构建 Flutter
+  Release 并输出版本化安装器。
+
 ### 功能
 
 - 使用 `auto_updater` 对接 macOS Sparkle 和 Windows WinSparkle。
@@ -83,4 +94,3 @@
 - GitHub Release 资产保持不可变；修复版本使用新的版本号重新发布。
 - appcast 在第二阶段保留最近若干正式版本，紧急情况下指向已验证的新修复版本。
 - 数据库迁移保持只向前且兼容旧数据；程序更新流程不直接操作数据库文件。
-
