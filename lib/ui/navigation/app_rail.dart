@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/app_theme.dart';
 import '../../services/update_service.dart';
+import '../../services/windows_update_installer.dart';
 import '../common/about_update_dialog.dart';
 import '../common/create_node_dialog.dart';
 
@@ -69,7 +72,12 @@ class AppRail extends StatelessWidget {
   void _showAboutAndUpdates(BuildContext context) {
     showDialog<void>(
       context: context,
-      builder: (context) => AboutUpdateDialog(service: GitHubUpdateService()),
+      builder: (context) => AboutUpdateDialog(
+        service: GitHubUpdateService(),
+        installUpdate: Platform.isWindows
+            ? WindowsUpdateInstaller().checkForUpdates
+            : null,
+      ),
     );
   }
 

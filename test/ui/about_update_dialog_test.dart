@@ -49,6 +49,32 @@ void main() {
     );
   });
 
+  testWidgets('Windows 发现新版后启动应用内安装', (tester) async {
+    final service = _FakeUpdateService(
+      release: ReleaseInfo(
+        version: VersionNumber.parse('0.2.0'),
+        name: 'Version 0.2.0',
+        notes: '',
+        pageUri: Uri.parse('https://github.com/lmyybh/best_todo_list/releases'),
+      ),
+    );
+    var installStarted = false;
+
+    await _pumpDialog(
+      tester,
+      service,
+      installUpdate: () async => installStarted = true,
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('check-for-updates')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('install-update')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('下载并安装'), findsOneWidget);
+    expect(installStarted, isTrue);
+    expect(service.openedUri, isNull);
+  });
+
   testWidgets('检查异常时留在弹窗并显示错误', (tester) async {
     final service = _FakeUpdateService(
       error: const UpdateCheckException('网络不可用'),
@@ -63,11 +89,20 @@ void main() {
   });
 }
 
-Future<void> _pumpDialog(WidgetTester tester, UpdateService service) async {
+Future<void> _pumpDialog(
+  WidgetTester tester,
+  UpdateService service, {
+  Future<void> Function()? installUpdate,
+}) async {
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
-        body: Center(child: AboutUpdateDialog(service: service)),
+        body: Center(
+          child: AboutUpdateDialog(
+            service: service,
+            installUpdate: installUpdate,
+          ),
+        ),
       ),
     ),
   );

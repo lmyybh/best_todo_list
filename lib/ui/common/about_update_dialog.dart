@@ -3,9 +3,14 @@ import 'package:flutter/material.dart';
 import '../../services/update_service.dart';
 
 class AboutUpdateDialog extends StatefulWidget {
-  const AboutUpdateDialog({required this.service, super.key});
+  const AboutUpdateDialog({
+    required this.service,
+    this.installUpdate,
+    super.key,
+  });
 
   final UpdateService service;
+  final Future<void> Function()? installUpdate;
 
   @override
   State<AboutUpdateDialog> createState() => _AboutUpdateDialogState();
@@ -74,6 +79,14 @@ class _AboutUpdateDialogState extends State<AboutUpdateDialog> {
     }
   }
 
+  Future<void> _installUpdate() async {
+    try {
+      await widget.installUpdate!();
+    } catch (error) {
+      if (mounted) setState(() => _message = '启动更新失败：$error');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final release = _availableRelease;
@@ -114,9 +127,15 @@ class _AboutUpdateDialogState extends State<AboutUpdateDialog> {
         ),
         if (release != null)
           OutlinedButton(
-            key: const ValueKey<String>('open-release-page'),
-            onPressed: _openReleasePage,
-            child: const Text('前往下载'),
+            key: ValueKey<String>(
+              widget.installUpdate == null
+                  ? 'open-release-page'
+                  : 'install-update',
+            ),
+            onPressed: widget.installUpdate == null
+                ? _openReleasePage
+                : _installUpdate,
+            child: Text(widget.installUpdate == null ? '前往下载' : '下载并安装'),
           ),
         FilledButton(
           key: const ValueKey<String>('check-for-updates'),

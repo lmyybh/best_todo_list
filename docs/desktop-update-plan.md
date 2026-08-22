@@ -81,6 +81,21 @@
 - App 内不得嵌入 GitHub Token。
 - 必须从上一个正式版本执行真实升级测试。
 
+### Windows 当前进度
+
+- 已接入 WinSparkle；发现新版后可在应用内触发下载和安装界面，且仅由用户手动触发。
+- DSA 公钥嵌入 Windows 可执行文件，私钥保存在仓库外。
+- `scripts/build_windows_appcast.ps1` 为 Setup EXE 生成签名并输出
+  `build/installer/appcast-windows.xml`：
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File scripts/build_windows_appcast.ps1 `
+    -PrivateKeyPath D:\BestTodoListSecrets\winsparkle\dsa_priv.pem
+  ```
+
+- 待完成：将安装包和 appcast 上传到正式 GitHub Release，并从旧版本执行一次真实覆盖升级。
+- Authenticode 代码签名仍需单独购买或申请证书；WinSparkle 的 DSA 签名不能替代 Windows 发布者签名。
+
 ## 第三阶段：发布自动化
 
 - 推送正式 Git tag 后分别在 macOS 和 Windows runner 构建。
