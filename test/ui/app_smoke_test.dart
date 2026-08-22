@@ -46,6 +46,10 @@ void main() {
       find.byKey(const ValueKey<String>('create-event-navigation')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const ValueKey<String>('about-update-navigation')),
+      findsOneWidget,
+    );
     expect(find.text('从一件想完成的事开始'), findsOneWidget);
     await tester.tap(find.widgetWithText(FilledButton, '新建事件'));
     await tester.pumpAndSettle();

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/app_theme.dart';
+import '../../services/update_service.dart';
+import '../common/about_update_dialog.dart';
 import '../common/create_node_dialog.dart';
 
 class AppRail extends StatelessWidget {
@@ -38,6 +40,13 @@ class AppRail extends StatelessWidget {
                 onPressed: () => controller.setView(AppView.timeline),
               ),
               const Spacer(),
+              _RailButton(
+                key: const ValueKey<String>('about-update-navigation'),
+                label: '关于与更新',
+                icon: Icons.info_outline,
+                onPressed: () => _showAboutAndUpdates(context),
+              ),
+              const SizedBox(height: 6),
               Divider(
                 height: 13,
                 indent: 5,
@@ -54,6 +63,13 @@ class AppRail extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  void _showAboutAndUpdates(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AboutUpdateDialog(service: GitHubUpdateService()),
     );
   }
 
