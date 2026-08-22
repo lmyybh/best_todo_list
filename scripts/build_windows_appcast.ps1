@@ -10,15 +10,13 @@ $pubspecPath = Join-Path $projectRoot 'pubspec.yaml'
 $pubspec = Get-Content -LiteralPath $pubspecPath -Raw
 $versionMatch = [regex]::Match(
     $pubspec,
-    '(?m)^version:\s*(\d+\.\d+\.\d+)\+(\d+)\s*$'
+    '(?m)^version:\s*(\d+\.\d+\.\d+)\s*$'
 )
 if (-not $versionMatch.Success) {
-    throw 'pubspec.yaml version must use the X.Y.Z+N format.'
+    throw 'pubspec.yaml version must use the X.Y.Z format.'
 }
 
 $version = $versionMatch.Groups[1].Value
-$buildNumber = $versionMatch.Groups[2].Value
-$fullVersion = "$version+$buildNumber"
 $installerName = "best_todo_list-$version-windows-x64-setup.exe"
 $installerPath = Join-Path $projectRoot "build\installer\$installerName"
 if (-not (Test-Path -LiteralPath $installerPath)) {
@@ -64,7 +62,7 @@ $appcast = @"
       <pubDate>$pubDate</pubDate>
       <enclosure url="$installerUrl"
                  sparkle:dsaSignature="$signature"
-                 sparkle:version="$fullVersion"
+                 sparkle:version="$version"
                  sparkle:os="windows"
                  length="$installerLength"
                  type="application/octet-stream" />

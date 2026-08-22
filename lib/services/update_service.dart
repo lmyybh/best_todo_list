@@ -23,10 +23,7 @@ class GitHubUpdateService implements UpdateService {
   @override
   Future<AppVersion> loadCurrentVersion() async {
     final packageInfo = await PackageInfo.fromPlatform();
-    return AppVersion(
-      version: packageInfo.version,
-      buildNumber: packageInfo.buildNumber,
-    );
+    return AppVersion(version: packageInfo.version);
   }
 
   @override
@@ -87,14 +84,13 @@ class GitHubUpdateService implements UpdateService {
 }
 
 class AppVersion {
-  const AppVersion({required this.version, required this.buildNumber});
+  const AppVersion({required this.version});
 
   final String version;
-  final String buildNumber;
 
   VersionNumber get number => VersionNumber.parse(version);
 
-  String get display => buildNumber.isEmpty ? version : '$version+$buildNumber';
+  String get display => 'v$version';
 }
 
 class ReleaseInfo {
@@ -138,7 +134,7 @@ class VersionNumber implements Comparable<VersionNumber> {
   }
 
   @override
-  String toString() => '$major.$minor.$patch';
+  String toString() => 'v$major.$minor.$patch';
 }
 
 class UpdateCheckException implements Exception {

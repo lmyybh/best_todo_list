@@ -43,12 +43,12 @@ void main() {
       final release = await GitHubUpdateService(client).fetchLatestRelease();
 
       expect(release, isNotNull);
-      expect(release!.version.toString(), '0.2.0');
+      expect(release!.version.toString(), 'v0.2.0');
       expect(release.name, 'Version 0.2.0');
       expect(release.notes, '支持手动更新检查');
       expect(
         release.isNewerThan(
-          const AppVersion(version: '0.1.0', buildNumber: '1'),
+          const AppVersion(version: '0.1.0'),
         ),
         isTrue,
       );

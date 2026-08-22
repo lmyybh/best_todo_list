@@ -14,9 +14,8 @@
 
 ## 基本约定
 
-- `pubspec.yaml` 是应用版本的唯一来源。
+- `pubspec.yaml` 是应用版本的唯一来源，使用 `X.Y.Z` 格式。
 - Git tag 与 Release 使用 `v主版本.次版本.修订版本`，例如 `v0.2.0`。
-- build number 必须递增，例如 `0.2.0+2`。
 - 正式版本来自 `lmyybh/best_todo_list` 的最新非草稿、非预发布 GitHub Release。
 - 更新失败不得修改应用文件或用户 SQLite 数据。
 

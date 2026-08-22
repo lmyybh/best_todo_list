@@ -17,10 +17,10 @@ void main() {
 
     await _pumpDialog(tester, service);
 
-    expect(find.text('当前版本 0.1.0+1'), findsOneWidget);
+    expect(find.text('当前版本 v0.1.0'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey<String>('check-for-updates')));
     await tester.pumpAndSettle();
-    expect(find.text('发现新版本 0.2.0'), findsOneWidget);
+    expect(find.text('发现新版本 v0.2.0'), findsOneWidget);
     expect(find.text('新增 Windows 版本。'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey<String>('open-release-page')));
@@ -124,7 +124,7 @@ class _FakeUpdateService implements UpdateService {
 
   @override
   Future<AppVersion> loadCurrentVersion() async {
-    return const AppVersion(version: '0.1.0', buildNumber: '1');
+    return const AppVersion(version: '0.1.0');
   }
 
   @override
