@@ -1,8 +1,8 @@
 # todo
 
-一款使用 Flutter 构建的 macOS 本地事件树 Todo 应用。节点没有固定的“事件”或“任务”类型：有子节点时是事件，没有子节点时就是可完成的任务。
+一款使用 Flutter 构建的 macOS 与 Windows 本地事件树 Todo 应用。节点没有固定的“事件”或“任务”类型：有子节点时是事件，没有子节点时就是可完成的任务。
 
-界面基于 Material 3 和 Flutter 官方控件，采用暖灰纸张与深青绿的浅色桌面设计。当前只维护 macOS 运行目标，暂不考虑手机端。
+界面基于 Material 3 和 Flutter 官方控件，采用暖灰纸张与深青绿的浅色桌面设计。当前维护 macOS 与 Windows 桌面运行目标，暂不考虑手机端。
 
 ## 当前功能
 
@@ -37,7 +37,7 @@
 
 - 使用 SQLite 文件 `best_todo_list.sqlite` 持久化节点、层级、排序、备注、截止时间和完成状态
 - 数据保存在本机，不需要账号或网络连接
-- 关闭最后一个窗口后应用仍会运行；重新点击应用可恢复窗口，使用 `Command+Q` 完全退出
+- macOS 关闭最后一个窗口后应用仍会运行，可重新点击应用恢复窗口，并使用 `Command+Q` 完全退出；Windows 关闭窗口即退出应用
 
 ## 常用操作
 
@@ -49,8 +49,8 @@
 | 打开详情 | 点击事件卡片标题或任务行 |
 | 原地重命名任务 | 双击任务标题，或聚焦任务行后按 `F2` |
 | 保存 / 取消内联编辑 | `Enter` / `Esc` |
-| 调整事件顺序 | 拖动卡片标题区；聚焦后按 `⌥` + 方向键移动一步，增加 `Shift` 移到首尾 |
-| 调整同级任务顺序 | 拖动任务行手柄；聚焦后按 `⌥↑` / `⌥↓`，增加 `Shift` 移到首尾 |
+| 调整事件顺序 | 拖动卡片标题区；聚焦后按 `Option`（macOS）或 `Alt`（Windows）+ 方向键移动一步，增加 `Shift` 移到首尾 |
+| 调整同级任务顺序 | 拖动任务行手柄；聚焦后按 `Option+↑/↓`（macOS）或 `Alt+↑/↓`（Windows），增加 `Shift` 移到首尾 |
 | 切换时间线日期 | `←` / `→` |
 | 取消正在进行的拖动 | `Esc` |
 
@@ -62,7 +62,7 @@
 
 环境要求：
 
-- macOS 及对应的桌面开发工具链
+- macOS 及 Xcode，或 Windows 及 Visual Studio 的“使用 C++ 的桌面开发”工作负载
 - Flutter 3.44 或兼容的稳定版本
 - Dart 3.12 或兼容版本（见 `pubspec.yaml`）
 
@@ -70,27 +70,30 @@
 
 ```sh
 flutter pub get
-flutter run -d macos
+flutter run -d macos   # macOS
+flutter run -d windows # Windows
 ```
 
 应用运行后，在终端按 `r` 热重载，按 `R` 热重启，按 `q` 退出。
 
-## 构建 macOS App
+## 构建桌面应用
 
 在项目根目录执行 Release 构建：
 
 ```sh
 flutter pub get
-flutter build macos --release
+flutter build macos --release   # macOS
+flutter build windows --release # Windows
 ```
 
 构建产物位于：
 
 ```text
-build/macos/Build/Products/Release/todo.app
+macOS:   build/macos/Build/Products/Release/todo.app
+Windows: build/windows/x64/runner/Release/
 ```
 
-可以使用以下命令直接打开：
+macOS 可以使用以下命令直接打开：
 
 ```sh
 open build/macos/Build/Products/Release/todo.app
@@ -102,7 +105,8 @@ open build/macos/Build/Products/Release/todo.app
 dart format --output=none --set-exit-if-changed lib test
 flutter analyze
 flutter test
-flutter build macos --release
+flutter build macos --release   # 在 macOS 上执行
+flutter build windows --release # 在 Windows 上执行
 ```
 
 自动化测试覆盖节点树规则、同级排序、时间线日期边界、SQLite 升级与重开恢复，以及事件总览、详情和截止日期等核心 Widget 流程。
