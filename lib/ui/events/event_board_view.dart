@@ -735,6 +735,23 @@ class _EventCardState extends State<_EventCard> {
   void highlightCreated(String nodeId) {
     highlightTimer?.cancel();
     setState(() => highlightedId = nodeId);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || highlightedId != nodeId) return;
+      final created = widget.controller.tree.nodes[nodeId];
+      if (created?.parentId != widget.node.id ||
+          !treeScrollController.hasClients) {
+        return;
+      }
+      unawaited(
+        treeScrollController.animateTo(
+          treeScrollController.position.maxScrollExtent,
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+        ),
+      );
+    });
     highlightTimer = Timer(const Duration(milliseconds: 900), () {
       if (mounted) setState(() => highlightedId = null);
     });
@@ -1417,6 +1434,39 @@ class _EventTreeRowState extends State<_EventTreeRow> {
   final FocusNode focusNode = FocusNode(debugLabel: 'event-task-row');
   bool hovered = false;
   bool focused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.highlighted) _revealAfterLayout();
+  }
+
+  @override
+  void didUpdateWidget(covariant _EventTreeRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.highlighted && widget.highlighted) {
+      _revealAfterLayout();
+    }
+  }
+
+  void _revealAfterLayout() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.highlighted) return;
+      final scrollable = Scrollable.maybeOf(context);
+      final renderObject = context.findRenderObject();
+      if (scrollable == null || renderObject == null) return;
+      unawaited(
+        scrollable.position.ensureVisible(
+          renderObject,
+          alignment: 0.5,
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+        ),
+      );
+    });
+  }
 
   @override
   void dispose() {

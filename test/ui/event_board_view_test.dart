@@ -766,6 +766,13 @@ void main() {
       controller.tree.childrenOf(task.id).map((node) => node.title),
       <String>['检查链接'],
     );
+    final createdChild = controller.tree.childrenOf(task.id).single;
+    expect(
+      find
+          .byKey(ValueKey<String>('event-row-${createdChild.id}'))
+          .hitTestable(),
+      findsOneWidget,
+    );
     expect(draftInput, findsNothing);
     expect(controller.eventDetailOpen, isFalse);
 
@@ -790,6 +797,58 @@ void main() {
       <String>['检查链接', '校对附件'],
     );
     expect(draftInput, findsNothing);
+  });
+
+  testWidgets('快速新增任务后自动滚动到新任务行', (tester) async {
+    var id = 0;
+    final controller = AppController(
+      NodeService(
+        MemoryNodeRepository(),
+        clock: () => DateTime.utc(2026, 8, 13, 9),
+        idGenerator: () => 'created-scroll-${++id}',
+      ),
+      clock: () => DateTime(2026, 8, 13, 9),
+    );
+    await controller.load();
+    addTearDown(controller.dispose);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final root = await controller.create(title: '发布计划', selectCreated: false);
+    for (var index = 0; index < 10; index++) {
+      await controller.create(
+        parentId: root!.id,
+        title: '已有任务 $index',
+        selectCreated: false,
+      );
+    }
+    controller.showEventOverview();
+
+    await tester.binding.setSurfaceSize(const Size(720, 600));
+    await tester.pumpWidget(TodoApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    final taskScroll = find.byKey(
+      ValueKey<String>('event-tree-scroll-${root!.id}'),
+    );
+    final scrollable = tester.state<ScrollableState>(
+      find.descendant(of: taskScroll, matching: find.byType(Scrollable)),
+    );
+    expect(scrollable.position.pixels, 0);
+
+    await tester.tap(
+      find.byKey(ValueKey<String>('event-quick-add-trigger-${root.id}')),
+    );
+    await tester.pumpAndSettle();
+    final quickAdd = find.byKey(ValueKey<String>('event-quick-add-${root.id}'));
+    await tester.enterText(quickAdd, '刚创建的任务');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    final created = controller.tree.childrenOf(root.id).last;
+    expect(scrollable.position.pixels, greaterThan(0));
+    expect(
+      find.byKey(ValueKey<String>('event-row-${created.id}')).hitTestable(),
+      findsOneWidget,
+    );
   });
 
   testWidgets('事件卡片内输入不会改变事件面板滚动位置', (tester) async {
