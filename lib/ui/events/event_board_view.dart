@@ -815,13 +815,9 @@ class _DeadlineLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (node.deadline == null) return const SizedBox.shrink();
-    final overdue = isOverdue(
-      node.deadline,
-      now,
-      hasTime: node.hasDeadlineTime,
-    );
+    final overdue = node.deadline?.isOverdue(now) ?? false;
     return Text(
-      overdue ? '已逾期' : formatCompactDate(node.deadline!),
+      overdue ? '已逾期' : formatCompactDeadline(node.deadline!),
       style: TextStyle(
         color: overdue ? AppColors.of(context).danger : AppTheme.accent,
         fontSize: 10,

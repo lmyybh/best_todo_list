@@ -29,7 +29,7 @@ class TimelineQuery {
   }) {
     final target = _startOfDay(date);
     final result = _openEntries(tree).where((entry) {
-      final deadline = entry.node.deadline?.toLocal();
+      final deadline = entry.node.deadline?.calendarDate;
       if (deadline == null) return false;
       return _sameDate(deadline, target) ||
           (includeOverdue && deadline.isBefore(target));
@@ -55,7 +55,7 @@ class TimelineQuery {
   List<TimelineEntry> laterEntries(NodeTree tree, DateTime after) {
     final boundary = _startOfDay(after).add(const Duration(days: 1));
     final result = _openEntries(tree).where((entry) {
-      final deadline = entry.node.deadline?.toLocal();
+      final deadline = entry.node.deadline?.calendarDate;
       return deadline == null || !deadline.isBefore(boundary);
     }).toList();
     _sortEntries(result);
@@ -83,8 +83,8 @@ class TimelineQuery {
   void _sortEntries(List<TimelineEntry> entries, {DateTime? overdueBefore}) {
     entries.sort((a, b) {
       if (overdueBefore != null) {
-        final aOverdue = a.node.deadline!.toLocal().isBefore(overdueBefore);
-        final bOverdue = b.node.deadline!.toLocal().isBefore(overdueBefore);
+        final aOverdue = a.node.deadline!.calendarDate.isBefore(overdueBefore);
+        final bOverdue = b.node.deadline!.calendarDate.isBefore(overdueBefore);
         if (aOverdue != bOverdue) return aOverdue ? -1 : 1;
       }
       return _deadlineComparator(a.node, b.node);

@@ -1,5 +1,6 @@
 import 'package:uuid/uuid.dart';
 
+import 'deadline.dart';
 import 'node_repository.dart';
 import 'node_tree.dart';
 import 'todo_node.dart';
@@ -33,8 +34,7 @@ class NodeService {
   Future<TodoNode> createNode({
     String? parentId,
     required String title,
-    DateTime? deadline,
-    bool deadlineHasTime = true,
+    Deadline? deadline,
   }) async {
     final cleanTitle = _validatedTitle(title);
     final nodes = await repository.loadNodes();
@@ -55,8 +55,7 @@ class NodeService {
       id: idGenerator(),
       parentId: parentId,
       title: cleanTitle,
-      deadline: deadline?.toUtc(),
-      deadlineHasTime: deadline != null && deadlineHasTime,
+      deadline: deadline,
       createdAt: now,
       updatedAt: now,
       manualOrder: order,
@@ -88,16 +87,11 @@ class NodeService {
     );
   }
 
-  Future<void> updateDeadline(
-    String nodeId,
-    DateTime? deadline, {
-    bool hasTime = true,
-  }) async {
+  Future<void> updateDeadline(String nodeId, Deadline? deadline) async {
     final node = await _requireNode(nodeId);
     await repository.updateNode(
       node.copyWith(
-        deadline: deadline?.toUtc(),
-        deadlineHasTime: deadline != null && hasTime,
+        deadline: deadline,
         clearDeadline: deadline == null,
         updatedAt: clock().toUtc(),
       ),

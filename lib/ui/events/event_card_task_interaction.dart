@@ -899,7 +899,7 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                       ),
                       if (node.deadline != null && !hovered && !renaming)
                         Text(
-                          formatCompactDate(node.deadline!),
+                          formatCompactDeadline(node.deadline!),
                           style: TextStyle(color: colors.faint, fontSize: 9),
                         ),
                       if (children.isNotEmpty &&

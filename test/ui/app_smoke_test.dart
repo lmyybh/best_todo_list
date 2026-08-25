@@ -1,6 +1,7 @@
 import 'package:best_todo_list/app/app.dart';
 import 'package:best_todo_list/app/app_controller.dart';
 import 'package:best_todo_list/app/app_theme.dart';
+import 'package:best_todo_list/domain/deadline.dart';
 import 'package:best_todo_list/domain/node_tree.dart';
 import 'package:best_todo_list/domain/node_service.dart';
 import 'package:best_todo_list/domain/todo_node.dart';
@@ -240,7 +241,10 @@ void main() {
 
   testWidgets('时间线固定展示按完成日期归档的已完成任务', (tester) async {
     final root = await controller.create(title: '有日期任务');
-    await controller.updateDeadline(root!.id, DateTime(2026, 8, 11, 16));
+    await controller.updateDeadline(
+      root!.id,
+      TimedDeadline(DateTime(2026, 8, 11, 16)),
+    );
     final completed = await controller.create(title: '今天完成的任务');
     await controller.setCompleted(completed!.id, true);
     await tester.binding.setSurfaceSize(const Size(1100, 760));
@@ -277,7 +281,10 @@ void main() {
 
   testWidgets('逾期任务卡片使用明确的可见标题颜色', (tester) async {
     final task = await controller.create(title: '逾期任务');
-    await controller.updateDeadline(task!.id, DateTime(2026, 8, 11, 8));
+    await controller.updateDeadline(
+      task!.id,
+      TimedDeadline(DateTime(2026, 8, 11, 8)),
+    );
     controller.setView(AppView.timeline);
     await tester.binding.setSurfaceSize(const Size(1100, 760));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -519,7 +526,11 @@ void main() {
                   result = await showDeadlinePicker(
                     context: context,
                     anchorContext: context,
-                    initialValue: DateTime(2026, 8, 12),
+                    initialValue: DateOnlyDeadline(
+                      year: 2026,
+                      month: 8,
+                      day: 12,
+                    ),
                     now: DateTime(2026, 8, 12, 8),
                   );
                 },
@@ -562,8 +573,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(result, isA<SaveDeadline>());
       final saved = result! as SaveDeadline;
-      expect(saved.hasTime, isTrue);
-      expect(saved.value, DateTime(2026, 8, 12, 21));
+      expect(saved.value, isA<TimedDeadline>());
+      expect(
+        (saved.value as TimedDeadline).localTime,
+        DateTime(2026, 8, 12, 21),
+      );
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }

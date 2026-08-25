@@ -1,3 +1,4 @@
+import 'package:best_todo_list/domain/deadline.dart';
 import 'package:best_todo_list/domain/node_tree.dart';
 import 'package:best_todo_list/domain/timeline.dart';
 import 'package:best_todo_list/domain/todo_node.dart';
@@ -16,7 +17,7 @@ void main() {
     id: id,
     parentId: parentId,
     title: id,
-    deadline: deadline,
+    deadline: deadline == null ? null : TimedDeadline(deadline),
     createdAt: created,
     updatedAt: created,
     completedAt: completedAt,

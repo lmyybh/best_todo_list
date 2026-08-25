@@ -334,10 +334,7 @@ class _EventHeader extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 3),
                                   Text(
-                                    formatDeadline(
-                                      node.deadline,
-                                      hasTime: node.hasDeadlineTime,
-                                    ),
+                                    formatDeadline(node.deadline),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
@@ -446,14 +443,8 @@ class _EventHeader extends StatelessWidget {
           .any(
             (child) =>
                 child.deadline != null &&
-                effectiveDeadline(
-                  child.deadline!,
-                  hasTime: child.hasDeadlineTime,
-                ).isAfter(
-                  effectiveDeadline(
-                    parent.deadline!,
-                    hasTime: parent.hasDeadlineTime,
-                  ),
+                child.deadline!.effectiveAt.isAfter(
+                  parent.deadline!.effectiveAt,
                 ),
           );
 }
@@ -922,13 +913,12 @@ Future<void> _editDeadline(
     context: context,
     anchorContext: anchorContext,
     initialValue: node.deadline,
-    initialHasTime: node.hasDeadlineTime,
     now: controller.now,
   );
   if (!context.mounted || result == null) return;
   switch (result) {
-    case SaveDeadline(:final value, :final hasTime):
-      await controller.updateDeadline(node.id, value, hasTime: hasTime);
+    case SaveDeadline(:final value):
+      await controller.updateDeadline(node.id, value);
     case ClearDeadline():
       await controller.updateDeadline(node.id, null);
   }

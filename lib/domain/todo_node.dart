@@ -1,3 +1,5 @@
+import 'deadline.dart';
+
 class TodoNode {
   const TodoNode({
     required this.id,
@@ -8,7 +10,6 @@ class TodoNode {
     this.notes = '',
     this.parentId,
     this.deadline,
-    this.deadlineHasTime = true,
     this.completedAt,
     this.deletedAt,
   });
@@ -17,10 +18,7 @@ class TodoNode {
   final String? parentId;
   final String title;
   final String notes;
-  final DateTime? deadline;
-  // Nullable so instances retained by Flutter hot reload can safely lack it.
-  final bool? deadlineHasTime;
-  bool get hasDeadlineTime => deadlineHasTime ?? false;
+  final Deadline? deadline;
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? completedAt;
@@ -34,8 +32,7 @@ class TodoNode {
     bool clearParentId = false,
     String? title,
     String? notes,
-    DateTime? deadline,
-    bool? deadlineHasTime,
+    Deadline? deadline,
     bool clearDeadline = false,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -51,9 +48,6 @@ class TodoNode {
       title: title ?? this.title,
       notes: notes ?? this.notes,
       deadline: clearDeadline ? null : (deadline ?? this.deadline),
-      deadlineHasTime: clearDeadline
-          ? false
-          : (deadlineHasTime ?? hasDeadlineTime),
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       completedAt: clearCompletedAt ? null : (completedAt ?? this.completedAt),
@@ -67,8 +61,8 @@ class TodoNode {
     'parent_id': parentId,
     'title': title,
     'notes': notes,
-    'deadline': deadline?.toUtc().millisecondsSinceEpoch,
-    'deadline_has_time': hasDeadlineTime ? 1 : 0,
+    'deadline_date': deadline?.storage.date,
+    'deadline_at': deadline?.storage.instantMilliseconds,
     'created_at': createdAt.toUtc().millisecondsSinceEpoch,
     'updated_at': updatedAt.toUtc().millisecondsSinceEpoch,
     'completed_at': completedAt?.toUtc().millisecondsSinceEpoch,
@@ -89,11 +83,10 @@ class TodoNode {
       parentId: map['parent_id'] as String?,
       title: map['title']! as String,
       notes: map['notes'] as String? ?? '',
-      deadline: nullableDate('deadline'),
-      deadlineHasTime:
-          (map['deadline_has_time'] as int? ??
-              (map['deadline'] == null ? 0 : 1)) ==
-          1,
+      deadline: Deadline.fromStorage(
+        date: map['deadline_date'] as String?,
+        instantMilliseconds: map['deadline_at'] as int?,
+      ),
       createdAt: nullableDate('created_at')!,
       updatedAt: nullableDate('updated_at')!,
       completedAt: nullableDate('completed_at'),

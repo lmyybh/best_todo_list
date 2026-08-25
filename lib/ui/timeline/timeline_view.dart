@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import '../../app/app_controller.dart';
 import '../../app/app_theme.dart';
 import '../../domain/timeline.dart';
-import '../common/formatters.dart';
 import '../common/node_tile.dart';
 
 class TimelineView extends StatelessWidget {
@@ -22,11 +21,7 @@ class TimelineView extends StatelessWidget {
         ? entries
               .where(
                 (entry) =>
-                    isOverdue(
-                      entry.node.deadline,
-                      controller.now,
-                      hasTime: entry.node.hasDeadlineTime,
-                    ) &&
+                    (entry.node.deadline?.isOverdue(controller.now) ?? false) &&
                     !entry.isComplete,
               )
               .toList()

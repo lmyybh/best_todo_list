@@ -46,11 +46,7 @@ class _NodeTileState extends State<NodeTile> {
         .where((leaf) => leaf.completedAt != null)
         .length;
     final overdue =
-        isOverdue(
-          node.deadline,
-          widget.now ?? DateTime.now(),
-          hasTime: node.hasDeadlineTime,
-        ) &&
+        (node.deadline?.isOverdue(widget.now ?? DateTime.now()) ?? false) &&
         !complete;
     final hasMetadata =
         node.deadline != null || isEvent || (path?.isNotEmpty ?? false);
@@ -147,10 +143,7 @@ class _NodeTileState extends State<NodeTile> {
                                   children: <Widget>[
                                     if (node.deadline != null)
                                       Text(
-                                        formatDeadline(
-                                          node.deadline,
-                                          hasTime: node.hasDeadlineTime,
-                                        ),
+                                        formatDeadline(node.deadline),
                                         style: TextStyle(
                                           color: overdue
                                               ? colors.danger

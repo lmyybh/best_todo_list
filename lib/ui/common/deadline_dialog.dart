@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/app_theme.dart';
+import '../../domain/deadline.dart';
 
 sealed class DeadlineDialogResult {
   const DeadlineDialogResult();
 }
 
 class SaveDeadline extends DeadlineDialogResult {
-  const SaveDeadline(this.value, {required this.hasTime});
+  const SaveDeadline(this.value);
 
-  final DateTime value;
-  final bool hasTime;
+  final Deadline value;
 }
 
 class ClearDeadline extends DeadlineDialogResult {
@@ -21,8 +21,7 @@ class ClearDeadline extends DeadlineDialogResult {
 Future<DeadlineDialogResult?> showDeadlinePicker({
   required BuildContext context,
   required BuildContext anchorContext,
-  DateTime? initialValue,
-  bool initialHasTime = false,
+  Deadline? initialValue,
   DateTime? now,
 }) {
   final anchor = anchorContext.findRenderObject()! as RenderBox;
@@ -61,11 +60,7 @@ Future<DeadlineDialogResult?> showDeadlinePicker({
           top: top,
           width: width,
           height: height,
-          child: DeadlineDialog(
-            initialValue: initialValue,
-            initialHasTime: initialHasTime,
-            now: now,
-          ),
+          child: DeadlineDialog(initialValue: initialValue, now: now),
         ),
       ],
     ),
@@ -77,15 +72,9 @@ Future<DeadlineDialogResult?> showDeadlinePicker({
 }
 
 class DeadlineDialog extends StatefulWidget {
-  const DeadlineDialog({
-    this.initialValue,
-    this.initialHasTime = false,
-    this.now,
-    super.key,
-  });
+  const DeadlineDialog({this.initialValue, this.now, super.key});
 
-  final DateTime? initialValue;
-  final bool initialHasTime;
+  final Deadline? initialValue;
   final DateTime? now;
 
   @override
@@ -102,18 +91,15 @@ class _DeadlineDialogState extends State<DeadlineDialog> {
   void initState() {
     super.initState();
     final now = widget.now ?? DateTime.now();
-    final initial = widget.initialValue?.toLocal() ?? now;
-    _date = DateTime(initial.year, initial.month, initial.day);
-    _visibleMonth = DateTime(initial.year, initial.month);
+    final initialDate = widget.initialValue?.calendarDate ?? now;
+    final initialTime = switch (widget.initialValue) {
+      TimedDeadline(:final localTime) => localTime,
+      _ => null,
+    };
+    _date = DateTime(initialDate.year, initialDate.month, initialDate.day);
+    _visibleMonth = DateTime(initialDate.year, initialDate.month);
     _timeController = TextEditingController(
-      text: _formatTime(
-        widget.initialValue != null && widget.initialHasTime
-            ? initial.hour
-            : 21,
-        widget.initialValue != null && widget.initialHasTime
-            ? initial.minute
-            : 0,
-      ),
+      text: _formatTime(initialTime?.hour ?? 21, initialTime?.minute ?? 0),
     );
   }
 
@@ -167,14 +153,15 @@ class _DeadlineDialogState extends State<DeadlineDialog> {
     Navigator.pop(
       context,
       SaveDeadline(
-        DateTime(
-          _date.year,
-          _date.month,
-          _date.day,
-          int.parse(parts[0]),
-          int.parse(parts[1]),
+        TimedDeadline(
+          DateTime(
+            _date.year,
+            _date.month,
+            _date.day,
+            int.parse(parts[0]),
+            int.parse(parts[1]),
+          ),
         ),
-        hasTime: true,
       ),
     );
   }

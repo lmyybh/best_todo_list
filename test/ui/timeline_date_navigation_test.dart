@@ -1,5 +1,6 @@
 import 'package:best_todo_list/app/app.dart';
 import 'package:best_todo_list/app/app_controller.dart';
+import 'package:best_todo_list/domain/deadline.dart';
 import 'package:best_todo_list/domain/node_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -23,12 +24,12 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await controller.create(
       title: '明天任务',
-      deadline: DateTime(2026, 8, 14, 16),
+      deadline: TimedDeadline(DateTime(2026, 8, 14, 16)),
       selectCreated: false,
     );
     await controller.create(
       title: '远期任务',
-      deadline: DateTime(2026, 8, 20, 16),
+      deadline: TimedDeadline(DateTime(2026, 8, 20, 16)),
       selectCreated: false,
     );
     controller.setView(AppView.timeline);
