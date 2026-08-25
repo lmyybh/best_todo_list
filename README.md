@@ -111,6 +111,21 @@ macOS 可以使用以下命令直接打开：
 open build/macos/Build/Products/Release/todo.app
 ```
 
+macOS 也可以生成用于本地安装测试的 DMG（需要在 macOS 上执行）：
+
+```sh
+chmod +x scripts/build_macos_dmg.sh
+scripts/build_macos_dmg.sh
+```
+
+DMG 输出到 `build/installer/best_todo_list-<version>-macos.dmg`。该产物未经
+Developer ID 签名、公证或 Sparkle 更新签名，不能直接用于公开发布。如果已经有
+版本与 `pubspec.yaml` 一致的 Release 构建，可跳过 Flutter 构建步骤：
+
+```sh
+scripts/build_macos_dmg.sh --skip-flutter-build
+```
+
 ## 检查与测试
 
 ```sh
