@@ -799,6 +799,68 @@ void main() {
     expect(draftInput, findsNothing);
   });
 
+  testWidgets('滚动条底部任务的新建子任务栏完整显示', (tester) async {
+    var id = 0;
+    final controller = AppController(
+      NodeService(
+        MemoryNodeRepository(),
+        clock: () => DateTime.utc(2026, 8, 13, 9),
+        idGenerator: () => 'bottom-draft-${++id}',
+      ),
+      clock: () => DateTime(2026, 8, 13, 9),
+    );
+    await controller.load();
+    addTearDown(controller.dispose);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final root = await controller.create(title: '发布计划', selectCreated: false);
+    final parent = await controller.create(
+      parentId: root!.id,
+      title: '发布阶段',
+      selectCreated: false,
+    );
+    late String targetId;
+    for (var index = 0; index < 10; index++) {
+      final task = await controller.create(
+        parentId: parent!.id,
+        title: '任务 $index',
+        selectCreated: false,
+      );
+      targetId = task!.id;
+    }
+    controller.showEventOverview();
+
+    await tester.binding.setSurfaceSize(const Size(720, 600));
+    await tester.pumpWidget(TodoApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    final taskScroll = find.byKey(
+      ValueKey<String>('event-tree-scroll-${root.id}'),
+    );
+    final scrollable = tester.state<ScrollableState>(
+      find.descendant(of: taskScroll, matching: find.byType(Scrollable)).first,
+    );
+    scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
+    await tester.pump();
+
+    final targetRow = find.byKey(ValueKey<String>('event-row-$targetId'));
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: tester.getCenter(targetRow));
+    await mouse.moveTo(tester.getCenter(targetRow));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.tap(find.byKey(ValueKey<String>('event-add-child-$targetId')));
+    await tester.pumpAndSettle();
+
+    final draftSurface = find.byKey(
+      const ValueKey<String>('event-inline-draft-surface'),
+    );
+    expect(draftSurface, findsOneWidget);
+    expect(
+      tester.getBottomRight(draftSurface).dy,
+      lessThanOrEqualTo(tester.getBottomRight(taskScroll).dy),
+    );
+  });
+
   testWidgets('快速新增任务后自动滚动到新任务行', (tester) async {
     var id = 0;
     final controller = AppController(

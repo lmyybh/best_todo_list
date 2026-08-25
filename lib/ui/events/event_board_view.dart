@@ -608,6 +608,12 @@ class _EventCardState extends State<_EventCard> {
     );
   }
 
+  void _revealInlineDraftAfterLayout() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && inlineDraftParentId != null) _revealInlineDraft();
+    });
+  }
+
   Future<void> _finishInlineDraft() async {
     final parentId = inlineDraftParentId;
     if (parentId == null || inlineDraftSubmitting) return;
@@ -1088,6 +1094,8 @@ class _EventCardState extends State<_EventCard> {
                                         submitting: inlineDraftSubmitting,
                                         onSubmit: _finishInlineDraft,
                                         onCancel: _closeInlineDraft,
+                                        onRevealed:
+                                            _revealInlineDraftAfterLayout,
                                       ),
                                   inlineRenameBuilder: (node) =>
                                       _InlineTaskRenameField(
@@ -1878,6 +1886,7 @@ class _InlineTaskDraftRow extends StatelessWidget {
     required this.submitting,
     required this.onSubmit,
     required this.onCancel,
+    required this.onRevealed,
     super.key,
   });
 
@@ -1887,6 +1896,7 @@ class _InlineTaskDraftRow extends StatelessWidget {
   final bool submitting;
   final VoidCallback onSubmit;
   final VoidCallback onCancel;
+  final VoidCallback onRevealed;
 
   @override
   Widget build(BuildContext context) {
@@ -1898,6 +1908,7 @@ class _InlineTaskDraftRow extends StatelessWidget {
           ? Duration.zero
           : const Duration(milliseconds: 120),
       curve: Curves.easeOut,
+      onEnd: onRevealed,
       builder: (context, value, child) => ClipRect(
         child: Align(
           alignment: Alignment.topCenter,
