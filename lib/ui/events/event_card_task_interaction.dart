@@ -290,11 +290,53 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: widget.controller,
+    builder: (context, _) => _buildContent(context),
+  );
+
+  Widget _buildContent(BuildContext context) {
     final controller = widget.controller;
     final tree = controller.tree;
     final children = tree.childrenOf(widget.rootEventId);
     final colors = AppColors.of(context);
+    final interaction = _EventTaskTreeInteraction(
+      controller: controller,
+      tree: tree,
+      collapsedIds: collapsedIds,
+      expandedBeyondPreviewIds: expandedBeyondPreviewIds,
+      highlightedId: highlightedId,
+      inlineDraftParentId: inlineDraftParentId,
+      inlineRenameNodeId: inlineRenameNodeId,
+      inlineDraftBuilder: (depth) => _InlineTaskDraftRow(
+        key: inlineDraftKey,
+        depth: depth,
+        controller: inlineDraftController,
+        focusNode: inlineDraftFocusNode,
+        submitting: inlineDraftSubmitting,
+        onSubmit: _finishInlineDraft,
+        onCancel: _closeInlineDraft,
+        onRevealed: _revealInlineDraftAfterLayout,
+      ),
+      inlineRenameBuilder: (node) => _InlineTaskRenameField(
+        nodeId: node.id,
+        controller: inlineRenameController,
+        focusNode: inlineRenameFocusNode,
+        submitting: inlineRenameSubmitting,
+        failed: inlineRenameFailed,
+        fontWeight: tree.childrenOf(node.id).isEmpty
+            ? FontWeight.w500
+            : FontWeight.w600,
+        onSubmit: _finishInlineRename,
+        onCancel: _closeInlineRename,
+      ),
+      onCreateChild: (parentId) => unawaited(_openInlineDraft(parentId)),
+      onRename: (task) => unawaited(_openInlineRename(task)),
+      onDelete: (task) => unawaited(_deleteTaskNode(task)),
+      onToggleExpanded: (nodeId) => setState(() {
+        if (!collapsedIds.add(nodeId)) collapsedIds.remove(nodeId);
+      }),
+    );
     return Column(
       children: <Widget>[
         Expanded(
@@ -325,48 +367,10 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
                           key: ValueKey<String>(
                             'event-tree-scroll-${widget.rootEventId}',
                           ),
-                          controller: controller,
-                          tree: tree,
+                          interaction: interaction,
                           parentId: widget.rootEventId,
                           depth: 0,
-                          collapsedIds: collapsedIds,
-                          expandedBeyondPreviewIds: expandedBeyondPreviewIds,
-                          highlightedId: highlightedId,
-                          inlineDraftParentId: inlineDraftParentId,
-                          inlineRenameNodeId: inlineRenameNodeId,
                           scrollController: treeScrollController,
-                          inlineDraftBuilder: (depth) => _InlineTaskDraftRow(
-                            key: inlineDraftKey,
-                            depth: depth,
-                            controller: inlineDraftController,
-                            focusNode: inlineDraftFocusNode,
-                            submitting: inlineDraftSubmitting,
-                            onSubmit: _finishInlineDraft,
-                            onCancel: _closeInlineDraft,
-                            onRevealed: _revealInlineDraftAfterLayout,
-                          ),
-                          inlineRenameBuilder: (node) => _InlineTaskRenameField(
-                            nodeId: node.id,
-                            controller: inlineRenameController,
-                            focusNode: inlineRenameFocusNode,
-                            submitting: inlineRenameSubmitting,
-                            failed: inlineRenameFailed,
-                            fontWeight: tree.childrenOf(node.id).isEmpty
-                                ? FontWeight.w500
-                                : FontWeight.w600,
-                            onSubmit: _finishInlineRename,
-                            onCancel: _closeInlineRename,
-                          ),
-                          onCreateChild: (parentId) =>
-                              unawaited(_openInlineDraft(parentId)),
-                          onRename: (task) =>
-                              unawaited(_openInlineRename(task)),
-                          onDelete: (task) => unawaited(_deleteTaskNode(task)),
-                          onToggleExpanded: (nodeId) => setState(() {
-                            if (!collapsedIds.add(nodeId)) {
-                              collapsedIds.remove(nodeId);
-                            }
-                          }),
                         ),
                       ),
                     );
@@ -383,42 +387,81 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
   }
 }
 
-class _EventTaskGroup extends StatefulWidget {
-  const _EventTaskGroup({
+class _EventTaskTreeInteraction {
+  const _EventTaskTreeInteraction({
     required this.controller,
     required this.tree,
-    required this.parentId,
-    required this.depth,
-    required this.collapsedIds,
-    required this.expandedBeyondPreviewIds,
-    required this.highlightedId,
-    required this.inlineDraftParentId,
-    required this.inlineRenameNodeId,
-    required this.inlineDraftBuilder,
-    required this.inlineRenameBuilder,
-    required this.onCreateChild,
-    required this.onRename,
-    required this.onDelete,
-    required this.onToggleExpanded,
-    this.scrollController,
-    super.key,
+    required this._collapsedIds,
+    required this._expandedBeyondPreviewIds,
+    required this._highlightedId,
+    required this._inlineDraftParentId,
+    required this._inlineRenameNodeId,
+    required this._inlineDraftBuilder,
+    required this._inlineRenameBuilder,
+    required this._onCreateChild,
+    required this._onRename,
+    required this._onDelete,
+    required this._onToggleExpanded,
   });
 
   final AppController controller;
   final NodeTree tree;
+  final Set<String> _collapsedIds;
+  final Set<String> _expandedBeyondPreviewIds;
+  final String? _highlightedId;
+  final String? _inlineDraftParentId;
+  final String? _inlineRenameNodeId;
+  final Widget Function(int depth) _inlineDraftBuilder;
+  final Widget Function(TodoNode node) _inlineRenameBuilder;
+  final ValueChanged<String> _onCreateChild;
+  final ValueChanged<TodoNode> _onRename;
+  final ValueChanged<TodoNode> _onDelete;
+  final ValueChanged<String> _onToggleExpanded;
+
+  bool isExpanded(String nodeId) => !_collapsedIds.contains(nodeId);
+
+  bool canExpand(TodoNode node, int depth) =>
+      !tree.isLeaf(node.id) &&
+      (depth < _maximumPreviewDepth ||
+          _expandedBeyondPreviewIds.contains(node.id));
+
+  bool showsChildren(TodoNode node, int depth) =>
+      isExpanded(node.id) &&
+      (depth < _maximumPreviewDepth ||
+          _expandedBeyondPreviewIds.contains(node.id)) &&
+      (tree.childrenOf(node.id).isNotEmpty || showsDraft(node.id));
+
+  bool showsDraft(String parentId) => _inlineDraftParentId == parentId;
+
+  bool isHighlighted(String nodeId) => _highlightedId == nodeId;
+
+  bool isRenaming(String nodeId) => _inlineRenameNodeId == nodeId;
+
+  Widget buildDraft(int depth) => _inlineDraftBuilder(depth);
+
+  Widget buildRename(TodoNode node) => _inlineRenameBuilder(node);
+
+  void createChild(String parentId) => _onCreateChild(parentId);
+
+  void rename(TodoNode node) => _onRename(node);
+
+  void delete(TodoNode node) => _onDelete(node);
+
+  void toggleExpanded(String nodeId) => _onToggleExpanded(nodeId);
+}
+
+class _EventTaskGroup extends StatefulWidget {
+  const _EventTaskGroup({
+    required this.interaction,
+    required this.parentId,
+    required this.depth,
+    this.scrollController,
+    super.key,
+  });
+
+  final _EventTaskTreeInteraction interaction;
   final String parentId;
   final int depth;
-  final Set<String> collapsedIds;
-  final Set<String> expandedBeyondPreviewIds;
-  final String? highlightedId;
-  final String? inlineDraftParentId;
-  final String? inlineRenameNodeId;
-  final Widget Function(int depth) inlineDraftBuilder;
-  final Widget Function(TodoNode node) inlineRenameBuilder;
-  final ValueChanged<String> onCreateChild;
-  final ValueChanged<TodoNode> onRename;
-  final ValueChanged<TodoNode> onDelete;
-  final ValueChanged<String> onToggleExpanded;
   final ScrollController? scrollController;
 
   @override
@@ -439,8 +482,9 @@ class _EventTaskGroupState extends State<_EventTaskGroup> {
 
   @override
   Widget build(BuildContext context) {
-    final children = widget.tree.childrenOf(widget.parentId);
-    final showsInlineDraft = widget.inlineDraftParentId == widget.parentId;
+    final interaction = widget.interaction;
+    final children = interaction.tree.childrenOf(widget.parentId);
+    final showsInlineDraft = interaction.showsDraft(widget.parentId);
     final rootGroup = widget.scrollController != null;
     return Focus(
       focusNode: focusNode,
@@ -488,46 +532,23 @@ class _EventTaskGroupState extends State<_EventTaskGroup> {
           if (index == children.length) {
             return KeyedSubtree(
               key: ValueKey<String>('event-inline-draft-${widget.parentId}'),
-              child: widget.inlineDraftBuilder(widget.depth),
+              child: interaction.buildDraft(widget.depth),
             );
           }
           final node = children[index];
-          final expanded = !widget.collapsedIds.contains(node.id);
-          final canExpand =
-              !widget.tree.isLeaf(node.id) &&
-              (widget.depth < _maximumPreviewDepth ||
-                  widget.expandedBeyondPreviewIds.contains(node.id));
           return _EventTreeBranch(
             key: ValueKey<String>('event-task-branch-${node.id}'),
-            controller: widget.controller,
+            interaction: interaction,
             node: node,
-            tree: widget.tree,
             depth: widget.depth,
             reorderIndex: index,
-            expanded: expanded,
             dragging: draggingId == node.id,
-            highlighted: widget.highlightedId == node.id,
-            renaming: widget.inlineRenameNodeId == node.id,
-            onToggleExpanded: canExpand
-                ? () => widget.onToggleExpanded(node.id)
-                : null,
             onKeyboardReorder: (direction, toEdge) {
               final newIndex = toEdge
                   ? (direction < 0 ? 0 : children.length - 1)
                   : (index + direction).clamp(0, children.length - 1);
               _reorder(children, index, newIndex);
             },
-            collapsedIds: widget.collapsedIds,
-            expandedBeyondPreviewIds: widget.expandedBeyondPreviewIds,
-            highlightedId: widget.highlightedId,
-            inlineDraftParentId: widget.inlineDraftParentId,
-            inlineRenameNodeId: widget.inlineRenameNodeId,
-            inlineDraftBuilder: widget.inlineDraftBuilder,
-            inlineRenameBuilder: widget.inlineRenameBuilder,
-            onCreateChild: widget.onCreateChild,
-            onRename: widget.onRename,
-            onDelete: widget.onDelete,
-            onToggleChildExpanded: widget.onToggleExpanded,
           );
         },
       ),
@@ -539,102 +560,50 @@ class _EventTaskGroupState extends State<_EventTaskGroup> {
     final orderedIds = children.map((node) => node.id).toList();
     final movedId = orderedIds.removeAt(oldIndex);
     orderedIds.insert(newIndex.clamp(0, orderedIds.length), movedId);
-    unawaited(widget.controller.reorderChildren(widget.parentId, orderedIds));
+    unawaited(
+      widget.interaction.controller.reorderChildren(
+        widget.parentId,
+        orderedIds,
+      ),
+    );
   }
 }
 
 class _EventTreeBranch extends StatelessWidget {
   const _EventTreeBranch({
-    required this.controller,
+    required this.interaction,
     required this.node,
-    required this.tree,
     required this.depth,
     required this.reorderIndex,
-    required this.expanded,
     required this.dragging,
-    required this.highlighted,
-    required this.renaming,
-    required this.onToggleExpanded,
     required this.onKeyboardReorder,
-    required this.collapsedIds,
-    required this.expandedBeyondPreviewIds,
-    required this.highlightedId,
-    required this.inlineDraftParentId,
-    required this.inlineRenameNodeId,
-    required this.inlineDraftBuilder,
-    required this.inlineRenameBuilder,
-    required this.onCreateChild,
-    required this.onRename,
-    required this.onDelete,
-    required this.onToggleChildExpanded,
     super.key,
   });
 
-  final AppController controller;
+  final _EventTaskTreeInteraction interaction;
   final TodoNode node;
-  final NodeTree tree;
   final int depth;
   final int reorderIndex;
-  final bool expanded;
   final bool dragging;
-  final bool highlighted;
-  final bool renaming;
-  final VoidCallback? onToggleExpanded;
   final void Function(int direction, bool toEdge) onKeyboardReorder;
-  final Set<String> collapsedIds;
-  final Set<String> expandedBeyondPreviewIds;
-  final String? highlightedId;
-  final String? inlineDraftParentId;
-  final String? inlineRenameNodeId;
-  final Widget Function(int depth) inlineDraftBuilder;
-  final Widget Function(TodoNode node) inlineRenameBuilder;
-  final ValueChanged<String> onCreateChild;
-  final ValueChanged<TodoNode> onRename;
-  final ValueChanged<TodoNode> onDelete;
-  final ValueChanged<String> onToggleChildExpanded;
 
   @override
   Widget build(BuildContext context) => Column(
     mainAxisSize: MainAxisSize.min,
     children: <Widget>[
       _EventTreeRow(
-        controller: controller,
+        interaction: interaction,
         node: node,
-        tree: tree,
         depth: depth,
         reorderIndex: reorderIndex,
-        expanded: expanded,
         dragging: dragging,
-        highlighted: highlighted,
-        renaming: renaming,
-        onToggleExpanded: onToggleExpanded,
         onKeyboardReorder: onKeyboardReorder,
-        onCreateChild: () => onCreateChild(node.id),
-        renameField: inlineRenameBuilder(node),
-        onRename: () => onRename(node),
-        onDelete: () => onDelete(node),
       ),
-      if (expanded &&
-          (depth < _maximumPreviewDepth ||
-              expandedBeyondPreviewIds.contains(node.id)) &&
-          (tree.childrenOf(node.id).isNotEmpty ||
-              inlineDraftParentId == node.id))
+      if (interaction.showsChildren(node, depth))
         _EventTaskGroup(
-          controller: controller,
-          tree: tree,
+          interaction: interaction,
           parentId: node.id,
           depth: depth + 1,
-          collapsedIds: collapsedIds,
-          expandedBeyondPreviewIds: expandedBeyondPreviewIds,
-          highlightedId: highlightedId,
-          inlineDraftParentId: inlineDraftParentId,
-          inlineRenameNodeId: inlineRenameNodeId,
-          inlineDraftBuilder: inlineDraftBuilder,
-          inlineRenameBuilder: inlineRenameBuilder,
-          onCreateChild: onCreateChild,
-          onRename: onRename,
-          onDelete: onDelete,
-          onToggleExpanded: onToggleChildExpanded,
         ),
     ],
   );
@@ -642,38 +611,20 @@ class _EventTreeBranch extends StatelessWidget {
 
 class _EventTreeRow extends StatefulWidget {
   const _EventTreeRow({
-    required this.controller,
+    required this.interaction,
     required this.node,
-    required this.tree,
     required this.depth,
     required this.reorderIndex,
-    required this.expanded,
     required this.dragging,
-    required this.highlighted,
-    required this.renaming,
-    required this.onToggleExpanded,
     required this.onKeyboardReorder,
-    required this.onCreateChild,
-    required this.renameField,
-    required this.onRename,
-    required this.onDelete,
   });
 
-  final AppController controller;
+  final _EventTaskTreeInteraction interaction;
   final TodoNode node;
-  final NodeTree tree;
   final int depth;
   final int reorderIndex;
-  final bool expanded;
   final bool dragging;
-  final bool highlighted;
-  final bool renaming;
-  final VoidCallback? onToggleExpanded;
   final void Function(int direction, bool toEdge) onKeyboardReorder;
-  final VoidCallback onCreateChild;
-  final Widget renameField;
-  final VoidCallback onRename;
-  final VoidCallback onDelete;
 
   @override
   State<_EventTreeRow> createState() => _EventTreeRowState();
@@ -687,20 +638,25 @@ class _EventTreeRowState extends State<_EventTreeRow> {
   @override
   void initState() {
     super.initState();
-    if (widget.highlighted) _revealAfterLayout();
+    if (widget.interaction.isHighlighted(widget.node.id)) {
+      _revealAfterLayout();
+    }
   }
 
   @override
   void didUpdateWidget(covariant _EventTreeRow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.highlighted && widget.highlighted) {
+    if (!oldWidget.interaction.isHighlighted(oldWidget.node.id) &&
+        widget.interaction.isHighlighted(widget.node.id)) {
       _revealAfterLayout();
     }
   }
 
   void _revealAfterLayout() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !widget.highlighted) return;
+      if (!mounted || !widget.interaction.isHighlighted(widget.node.id)) {
+        return;
+      }
       final scrollable = Scrollable.maybeOf(context);
       final renderObject = context.findRenderObject();
       if (scrollable == null || renderObject == null) return;
@@ -726,17 +682,21 @@ class _EventTreeRowState extends State<_EventTreeRow> {
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
-    final controller = widget.controller;
+    final interaction = widget.interaction;
+    final controller = interaction.controller;
     final node = widget.node;
-    final tree = widget.tree;
+    final tree = interaction.tree;
     final depth = widget.depth;
-    final expanded = widget.expanded;
-    final highlighted = widget.highlighted;
-    final onToggleExpanded = widget.onToggleExpanded;
+    final expanded = interaction.isExpanded(node.id);
+    final highlighted = interaction.isHighlighted(node.id);
+    final renaming = interaction.isRenaming(node.id);
+    final onToggleExpanded = interaction.canExpand(node, depth)
+        ? () => interaction.toggleExpanded(node.id)
+        : null;
     final children = tree.childrenOf(node.id);
     final hiddenDescendants = tree.descendantsOf(node.id).length;
     final complete = tree.isComplete(node.id);
-    final showActions = (hovered || focused) && !widget.renaming;
+    final showActions = (hovered || focused) && !renaming;
     final deleteButtonStyle = ButtonStyle(
       foregroundColor: WidgetStateProperty.resolveWith(
         (states) =>
@@ -753,11 +713,11 @@ class _EventTreeRowState extends State<_EventTreeRow> {
       onFocusChange: (value) => setState(() => focused = value),
       onKeyEvent: (_, event) {
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
-        if (event.logicalKey == LogicalKeyboardKey.f2 && !widget.renaming) {
-          widget.onRename();
+        if (event.logicalKey == LogicalKeyboardKey.f2 && !renaming) {
+          interaction.rename(node);
           return KeyEventResult.handled;
         }
-        if (widget.renaming || !HardwareKeyboard.instance.isAltPressed) {
+        if (renaming || !HardwareKeyboard.instance.isAltPressed) {
           return KeyEventResult.ignored;
         }
         if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
@@ -780,7 +740,7 @@ class _EventTreeRowState extends State<_EventTreeRow> {
         child: DecoratedBox(
           key: ValueKey<String>('event-row-surface-${node.id}'),
           decoration: BoxDecoration(
-            color: widget.renaming
+            color: renaming
                 ? colors.accentSoft.withValues(alpha: 0.55)
                 : highlighted
                 ? colors.accentSoft
@@ -804,7 +764,7 @@ class _EventTreeRowState extends State<_EventTreeRow> {
             child: GestureDetector(
               key: ValueKey<String>('event-row-${node.id}'),
               behavior: HitTestBehavior.opaque,
-              onTap: widget.renaming
+              onTap: renaming
                   ? null
                   : () {
                       focusNode.requestFocus();
@@ -819,14 +779,14 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                       SizedBox(
                         width: 18,
                         child: AnimatedOpacity(
-                          opacity: widget.renaming
+                          opacity: renaming
                               ? 0.25
                               : hovered || widget.dragging
                               ? 1
                               : 0.45,
                           duration: const Duration(milliseconds: 90),
                           child: IgnorePointer(
-                            ignoring: widget.renaming,
+                            ignoring: renaming,
                             child: ReorderableDragStartListener(
                               index: widget.reorderIndex,
                               key: ValueKey<String>(
@@ -858,9 +818,7 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                                 tooltip: expanded ? '折叠' : '展开',
                                 padding: EdgeInsets.zero,
                                 visualDensity: VisualDensity.compact,
-                                onPressed: widget.renaming
-                                    ? null
-                                    : onToggleExpanded,
+                                onPressed: renaming ? null : onToggleExpanded,
                                 icon: Icon(
                                   expanded
                                       ? Icons.keyboard_arrow_down
@@ -872,7 +830,7 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                       ),
                       InkResponse(
                         key: ValueKey<String>('event-complete-${node.id}'),
-                        onTap: children.isEmpty && !widget.renaming
+                        onTap: children.isEmpty && !renaming
                             ? () => controller.setCompleted(node.id, !complete)
                             : null,
                         radius: 16,
@@ -901,8 +859,8 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                       ),
                       const SizedBox(width: 6),
                       Expanded(
-                        child: widget.renaming
-                            ? widget.renameField
+                        child: renaming
+                            ? interaction.buildRename(node)
                             : Align(
                                 alignment: Alignment.centerLeft,
                                 child: Tooltip(
@@ -914,7 +872,8 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                                     cursor: SystemMouseCursors.text,
                                     child: GestureDetector(
                                       behavior: HitTestBehavior.opaque,
-                                      onDoubleTap: widget.onRename,
+                                      onDoubleTap: () =>
+                                          interaction.rename(node),
                                       child: Text(
                                         key: ValueKey<String>(
                                           'event-row-title-${node.id}',
@@ -938,7 +897,7 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                                 ),
                               ),
                       ),
-                      if (node.deadline != null && !hovered && !widget.renaming)
+                      if (node.deadline != null && !hovered && !renaming)
                         Text(
                           formatCompactDate(node.deadline!),
                           style: TextStyle(color: colors.faint, fontSize: 9),
@@ -946,7 +905,7 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                       if (children.isNotEmpty &&
                           onToggleExpanded == null &&
                           !hovered &&
-                          !widget.renaming) ...<Widget>[
+                          !renaming) ...<Widget>[
                         const SizedBox(width: 8),
                         Text(
                           '$hiddenDescendants 项',
@@ -977,7 +936,8 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                                 ),
                                 visualDensity: VisualDensity.compact,
                                 mouseCursor: SystemMouseCursors.click,
-                                onPressed: widget.onCreateChild,
+                                onPressed: () =>
+                                    interaction.createChild(node.id),
                                 icon: Icon(
                                   Icons.add,
                                   size: 16,
@@ -997,7 +957,7 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                                 visualDensity: VisualDensity.compact,
                                 mouseCursor: SystemMouseCursors.click,
                                 style: deleteButtonStyle,
-                                onPressed: widget.onDelete,
+                                onPressed: () => interaction.delete(node),
                                 icon: const Icon(
                                   Icons.delete_outline,
                                   size: 16,
