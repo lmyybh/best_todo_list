@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/app_controller.dart';
+import '../../app/node_write_result.dart';
 import '../../domain/todo_node.dart';
 import 'delete_confirmation_dialog.dart';
 
@@ -18,6 +19,6 @@ Future<void> confirmDeleteNode(
     ),
   );
   if (confirmed != true || !context.mounted) return;
-  await controller.delete(node.id);
-  controller.showEventOverview();
+  final result = await controller.delete(node.id);
+  if (result is NodeWriteSuccess) controller.showEventOverview();
 }

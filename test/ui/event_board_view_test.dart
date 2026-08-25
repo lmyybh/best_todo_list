@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/memory_node_repository.dart';
+import '../helpers/write_result.dart';
 
 void main() {
   testWidgets('事件卡片随桌面宽度分列并在同行保持等高', (tester) async {
@@ -26,11 +27,10 @@ void main() {
 
     final roots = <String>[];
     for (var index = 0; index < 8; index++) {
-      final root = await controller.create(
-        title: '事件 $index',
-        selectCreated: false,
+      final root = await expectWriteSuccess(
+        controller.create(title: '事件 $index', selectCreated: false),
       );
-      roots.add(root!.id);
+      roots.add(root.id);
     }
     for (var index = 0; index < 8; index++) {
       await controller.create(
@@ -262,18 +262,18 @@ void main() {
     await controller.load();
     addTearDown(controller.dispose);
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final root = await controller.create(title: '发布计划', selectCreated: false);
-    final task = await controller.create(
-      parentId: root!.id,
-      title: '确认文案',
-      selectCreated: false,
+    final root = await expectWriteSuccess(
+      controller.create(title: '发布计划', selectCreated: false),
+    );
+    final task = await expectWriteSuccess(
+      controller.create(parentId: root.id, title: '确认文案', selectCreated: false),
     );
     controller.showEventOverview();
     await tester.binding.setSurfaceSize(const Size(1100, 760));
     await tester.pumpWidget(TodoApp(controller: controller));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(ValueKey<String>('event-row-${task!.id}')));
+    await tester.tap(find.byKey(ValueKey<String>('event-row-${task.id}')));
     await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey<String>('event-detail-panel')),
@@ -327,11 +327,10 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final roots = <String>[];
     for (var index = 0; index < 8; index++) {
-      final root = await controller.create(
-        title: '事件 $index',
-        selectCreated: false,
+      final root = await expectWriteSuccess(
+        controller.create(title: '事件 $index', selectCreated: false),
       );
-      roots.add(root!.id);
+      roots.add(root.id);
     }
     controller.showEventOverview();
 
@@ -395,17 +394,18 @@ void main() {
     final rootIds = <String>[];
     final taskIds = <String>[];
     for (var index = 0; index < 8; index++) {
-      final root = await controller.create(
-        title: '事件 $index',
-        selectCreated: false,
+      final root = await expectWriteSuccess(
+        controller.create(title: '事件 $index', selectCreated: false),
       );
-      final task = await controller.create(
-        parentId: root!.id,
-        title: '任务 $index',
-        selectCreated: false,
+      final task = await expectWriteSuccess(
+        controller.create(
+          parentId: root.id,
+          title: '任务 $index',
+          selectCreated: false,
+        ),
       );
       rootIds.add(root.id);
-      taskIds.add(task!.id);
+      taskIds.add(task.id);
     }
     controller.showEventOverview();
 

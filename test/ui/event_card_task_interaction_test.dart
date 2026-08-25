@@ -9,7 +9,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/failing_node_repository.dart';
 import '../helpers/memory_node_repository.dart';
+import '../helpers/write_result.dart';
 
 void main() {
   testWidgets('事件卡片任务交互通过根事件展示子任务', (tester) async {
@@ -104,7 +106,7 @@ void main() {
   });
 
   testWidgets('重命名写入失败时保留输入和焦点以便重试', (tester) async {
-    final repository = _FailingNodeRepository();
+    final repository = FailingNodeRepository();
     final fixture = await _InteractionFixture.create(
       repository: repository,
       idPrefix: 'rename-failure',
@@ -134,7 +136,7 @@ void main() {
   });
 
   testWidgets('新增写入失败时保留草稿和焦点以便重试', (tester) async {
-    final repository = _FailingNodeRepository();
+    final repository = FailingNodeRepository();
     final fixture = await _InteractionFixture.create(
       repository: repository,
       idPrefix: 'draft-failure',
@@ -365,18 +367,20 @@ class _InteractionFixture {
     );
     await controller.load();
     addTearDown(controller.dispose);
-    final root = await controller.create(title: '发布计划', selectCreated: false);
-    return _InteractionFixture(controller: controller, root: root!);
+    final root = await expectWriteSuccess(
+      controller.create(title: '发布计划', selectCreated: false),
+    );
+    return _InteractionFixture(controller: controller, root: root);
   }
 
-  Future<TodoNode> createTask({
-    required String title,
-    String? parentId,
-  }) async => (await controller.create(
-    parentId: parentId ?? root.id,
-    title: title,
-    selectCreated: false,
-  ))!;
+  Future<TodoNode> createTask({required String title, String? parentId}) =>
+      expectWriteSuccess(
+        controller.create(
+          parentId: parentId ?? root.id,
+          title: title,
+          selectCreated: false,
+        ),
+      );
 
   Future<void> pump(WidgetTester tester, {double height = 420}) async {
     await tester.pumpWidget(
@@ -399,40 +403,4 @@ class _InteractionFixture {
     );
     await tester.pumpAndSettle();
   }
-}
-
-class _FailingNodeRepository implements NodeRepository {
-  final MemoryNodeRepository _delegate = MemoryNodeRepository();
-
-  bool failNextInsert = false;
-  bool failNextUpdate = false;
-
-  @override
-  Future<void> close() => _delegate.close();
-
-  @override
-  Future<void> insertNode(TodoNode node) {
-    if (failNextInsert) {
-      failNextInsert = false;
-      throw StateError('insert failed');
-    }
-    return _delegate.insertNode(node);
-  }
-
-  @override
-  Future<List<TodoNode>> loadNodes({bool includeDeleted = false}) =>
-      _delegate.loadNodes(includeDeleted: includeDeleted);
-
-  @override
-  Future<void> updateNode(TodoNode node) {
-    if (failNextUpdate) {
-      failNextUpdate = false;
-      throw StateError('update failed');
-    }
-    return _delegate.updateNode(node);
-  }
-
-  @override
-  Future<void> updateNodes(List<TodoNode> nodes) =>
-      _delegate.updateNodes(nodes);
 }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/app_controller.dart';
+import '../../app/node_write_result.dart';
 import '../../app/app_theme.dart';
 import '../../domain/node_tree.dart';
 import '../../domain/todo_node.dart';
@@ -433,13 +434,20 @@ class _EventBoardViewState extends State<EventBoardView> {
   }
 
   Future<void> _createEvent(BuildContext context) async {
-    final title = await showDialog<String>(
+    await showDialog<void>(
       context: context,
-      builder: (context) => const CreateNodeDialog(),
+      builder: (context) => CreateNodeDialog(
+        onSubmit: (title) async {
+          final result = await widget.controller.create(
+            title: title,
+            selectCreated: false,
+          );
+          if (result is NodeWriteFailure) return '创建失败，请重试';
+          widget.controller.showEventOverview();
+          return null;
+        },
+      ),
     );
-    if (title == null || title.trim().isEmpty) return;
-    await widget.controller.create(title: title, selectCreated: false);
-    widget.controller.showEventOverview();
   }
 }
 
@@ -911,7 +919,7 @@ Future<void> _renameNode(
   AppController controller,
   TodoNode node,
 ) async {
-  final title = await showDialog<String>(
+  await showDialog<void>(
     context: context,
     builder: (context) => CreateNodeDialog(
       title: '重命名',
@@ -919,9 +927,10 @@ Future<void> _renameNode(
       fieldLabel: '名称',
       hintText: '输入新名称',
       confirmLabel: '保存',
+      onSubmit: (title) async {
+        final result = await controller.updateTitle(node.id, title);
+        return result is NodeWriteFailure ? '保存失败，请重试' : null;
+      },
     ),
   );
-  if (title != null && title.trim().isNotEmpty) {
-    await controller.updateTitle(node.id, title);
-  }
 }

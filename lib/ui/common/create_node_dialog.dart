@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 class CreateNodeDialog extends StatefulWidget {
@@ -7,6 +9,7 @@ class CreateNodeDialog extends StatefulWidget {
     this.fieldLabel = '标题',
     this.hintText = '输入事件名称',
     this.confirmLabel = '创建',
+    this.onSubmit,
     super.key,
   });
 
@@ -15,6 +18,7 @@ class CreateNodeDialog extends StatefulWidget {
   final String fieldLabel;
   final String hintText;
   final String confirmLabel;
+  final Future<String?> Function(String value)? onSubmit;
 
   @override
   State<CreateNodeDialog> createState() => _CreateNodeDialogState();
@@ -25,6 +29,8 @@ class _CreateNodeDialogState extends State<CreateNodeDialog> {
   late final TextEditingController _controller = TextEditingController(
     text: widget.initialTitle,
   );
+  bool _submitting = false;
+  String? _submitError;
 
   @override
   void initState() {
@@ -40,9 +46,29 @@ class _CreateNodeDialogState extends State<CreateNodeDialog> {
 
   void _handleTextChanged() => setState(() {});
 
-  void _submit() {
+  Future<void> _submit() async {
+    if (_submitting) return;
     if (!_formKey.currentState!.validate()) return;
-    Navigator.pop(context, _controller.text.trim());
+    final value = _controller.text.trim();
+    final submit = widget.onSubmit;
+    if (submit == null) {
+      Navigator.pop(context, value);
+      return;
+    }
+    setState(() {
+      _submitting = true;
+      _submitError = null;
+    });
+    final error = await submit(value);
+    if (!mounted) return;
+    if (error == null) {
+      Navigator.pop(context);
+    } else {
+      setState(() {
+        _submitting = false;
+        _submitError = error;
+      });
+    }
   }
 
   @override
@@ -68,30 +94,48 @@ class _CreateNodeDialogState extends State<CreateNodeDialog> {
       width: 320,
       child: Form(
         key: _formKey,
-        child: TextFormField(
-          controller: _controller,
-          autofocus: true,
-          decoration: InputDecoration(
-            labelText: widget.fieldLabel,
-            hintText: widget.hintText,
-          ),
-          validator: (value) => value == null || value.trim().isEmpty
-              ? '${widget.fieldLabel}不能为空'
-              : null,
-          textInputAction: TextInputAction.done,
-          onFieldSubmitted: (_) => _submit(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            TextFormField(
+              controller: _controller,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: widget.fieldLabel,
+                hintText: widget.hintText,
+              ),
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? '${widget.fieldLabel}不能为空'
+                  : null,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => unawaited(_submit()),
+            ),
+            if (_submitError != null) ...<Widget>[
+              const SizedBox(height: 6),
+              Text(
+                _submitError!,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     ),
     actions: <Widget>[
       TextButton(
-        onPressed: () => Navigator.pop(context),
+        onPressed: _submitting ? null : () => Navigator.pop(context),
         child: const Text('取消'),
       ),
       FilledButton(
         key: const ValueKey<String>('node-title-confirm-button'),
-        onPressed: _controller.text.trim().isEmpty ? null : _submit,
-        child: Text(widget.confirmLabel),
+        onPressed: _controller.text.trim().isEmpty || _submitting
+            ? null
+            : _submit,
+        child: Text(_submitting ? '保存中…' : widget.confirmLabel),
       ),
     ],
   );

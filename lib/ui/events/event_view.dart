@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app/app_controller.dart';
+import '../../app/node_write_result.dart';
 import '../../app/app_theme.dart';
 import '../../domain/node_tree.dart';
 import '../../domain/todo_node.dart';
@@ -477,7 +478,7 @@ class _LifecycleDate extends StatelessWidget {
 class _EditableTitle extends StatefulWidget {
   const _EditableTitle({required this.title, required this.onSaved, super.key});
   final String title;
-  final ValueChanged<String> onSaved;
+  final Future<NodeWriteResult<void>> Function(String value) onSaved;
 
   @override
   State<_EditableTitle> createState() => _EditableTitleState();
@@ -492,10 +493,10 @@ class _EditableTitleState extends State<_EditableTitle> {
   String? _errorText;
 
   void _saveWhenFocusLeaves() {
-    if (!_focusNode.hasFocus) _save();
+    if (!_focusNode.hasFocus) unawaited(_save());
   }
 
-  void _save() {
+  Future<void> _save() async {
     final title = _controller.text.trim();
     if (title.isEmpty) {
       setState(() => _errorText = '标题不能为空');
@@ -505,7 +506,10 @@ class _EditableTitleState extends State<_EditableTitle> {
     if (title == widget.title) return;
     _controller.text = title;
     _controller.selection = TextSelection.collapsed(offset: title.length);
-    widget.onSaved(title);
+    final result = await widget.onSaved(title);
+    if (!mounted || result is NodeWriteSuccess) return;
+    setState(() => _errorText = '保存失败，请重试');
+    _focusNode.requestFocus();
   }
 
   @override
@@ -529,7 +533,7 @@ class _EditableTitleState extends State<_EditableTitle> {
           setState(() => _errorText = null);
         }
       },
-      onSubmitted: (_) => _save(),
+      onSubmitted: (_) => unawaited(_save()),
       style: const TextStyle(
         fontSize: 30,
         height: 1.2,
@@ -556,7 +560,7 @@ class _NotesEditor extends StatefulWidget {
   });
 
   final String initialValue;
-  final Future<void> Function(String value) onSaved;
+  final Future<NodeWriteResult<void>> Function(String value) onSaved;
 
   @override
   State<_NotesEditor> createState() => _NotesEditorState();
@@ -572,6 +576,7 @@ class _NotesEditorState extends State<_NotesEditor> {
   late String _savedValue = widget.initialValue;
   bool _focused = false;
   bool _saving = false;
+  bool _saveFailed = false;
 
   void _handleFocusChanged() {
     if (_focused != _focusNode.hasFocus) {
@@ -582,7 +587,12 @@ class _NotesEditorState extends State<_NotesEditor> {
 
   void _scheduleSave() {
     _saveTimer?.cancel();
-    if (!_saving) setState(() => _saving = true);
+    if (!_saving || _saveFailed) {
+      setState(() {
+        _saving = true;
+        _saveFailed = false;
+      });
+    }
     _saveTimer = Timer(const Duration(milliseconds: 600), _save);
   }
 
@@ -593,9 +603,14 @@ class _NotesEditorState extends State<_NotesEditor> {
       if (_saving && mounted) setState(() => _saving = false);
       return;
     }
-    await widget.onSaved(value);
-    _savedValue = value;
-    if (mounted) setState(() => _saving = false);
+    final result = await widget.onSaved(value);
+    if (result is NodeWriteSuccess) _savedValue = value;
+    if (mounted) {
+      setState(() {
+        _saving = false;
+        _saveFailed = result is NodeWriteFailure;
+      });
+    }
   }
 
   @override
@@ -652,8 +667,12 @@ class _NotesEditorState extends State<_NotesEditor> {
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 150),
                   child: Text(
-                    _saving ? '保存中…' : '已保存',
-                    key: ValueKey<bool>(_saving),
+                    _saving
+                        ? '保存中…'
+                        : _saveFailed
+                        ? '保存失败，将重试'
+                        : '已保存',
+                    key: ValueKey<(bool, bool)>((_saving, _saveFailed)),
                     style: TextStyle(color: colors.faint, fontSize: 10),
                   ),
                 ),
@@ -721,12 +740,12 @@ class _QuickAddState extends State<_QuickAdd> {
       return;
     }
     if (_invalid) setState(() => _invalid = false);
-    await widget.controller.create(
+    final result = await widget.controller.create(
       parentId: widget.parentId,
       title: value,
       selectCreated: false,
     );
-    if (mounted) _controller.clear();
+    if (mounted && result is NodeWriteSuccess) _controller.clear();
   }
 
   @override
@@ -938,8 +957,8 @@ Future<void> _deleteSelected(
     ),
   );
   if (confirmed != true || !context.mounted) return;
-  await controller.delete(node.id);
-  if (!context.mounted || controller.error != null) return;
+  final result = await controller.delete(node.id);
+  if (!context.mounted || result is NodeWriteFailure) return;
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Text(isLeaf ? '任务已删除' : '事件已删除'),

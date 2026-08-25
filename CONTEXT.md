@@ -25,3 +25,9 @@ _Avoid_: Timeline Query、时间线页面状态
 **时间线窗口 (Timeline Window)**:
 从周一开始连续展示的六个日历日；窗口之后的任务归入“更晚”。
 _Avoid_: 完整周、七天窗口
+
+## 节点写入
+
+**节点写入结果 (Node Write Result)**:
+一次节点变更及其后数据重载的整体结果，明确分为成功与失败。
+_Avoid_: nullable 成功值、通过全局 error 猜测结果

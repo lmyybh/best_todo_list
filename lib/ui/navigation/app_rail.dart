@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../app/app_controller.dart';
+import '../../app/node_write_result.dart';
 import '../../app/app_theme.dart';
 import '../../services/update_service.dart';
 import '../../services/windows_update_installer.dart';
@@ -82,14 +83,21 @@ class AppRail extends StatelessWidget {
   }
 
   Future<void> _createEvent(BuildContext context) async {
-    final title = await showDialog<String>(
+    await showDialog<void>(
       context: context,
-      builder: (context) => const CreateNodeDialog(),
+      builder: (context) => CreateNodeDialog(
+        onSubmit: (title) async {
+          final result = await controller.create(
+            title: title,
+            selectCreated: false,
+          );
+          if (result is NodeWriteFailure) return '创建失败，请重试';
+          controller.showEventOverview();
+          controller.setView(AppView.events);
+          return null;
+        },
+      ),
     );
-    if (title == null || title.trim().isEmpty) return;
-    await controller.create(title: title, selectCreated: false);
-    controller.showEventOverview();
-    controller.setView(AppView.events);
   }
 }
 

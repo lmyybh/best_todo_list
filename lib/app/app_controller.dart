@@ -5,6 +5,7 @@ import '../domain/node_service.dart';
 import '../domain/node_tree.dart';
 import '../domain/timeline.dart';
 import '../domain/todo_node.dart';
+import 'node_write_result.dart';
 
 enum AppView { events, timeline }
 
@@ -12,11 +13,13 @@ class AppController extends ChangeNotifier {
   AppController(this.service, {DateTime Function()? clock})
     : _clock = clock ?? DateTime.now {
     _timeline = TimelineExperience(_clock());
+    _writer = NodeWriter(service);
   }
 
   final NodeService service;
   final DateTime Function() _clock;
   late final TimelineExperience _timeline;
+  late final NodeWriter _writer;
   List<TodoNode> _nodes = const <TodoNode>[];
   String? _selectedId;
   bool _loading = true;
@@ -104,54 +107,66 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<TodoNode?> create({
+  Future<NodeWriteResult<TodoNode>> create({
     String? parentId,
     required String title,
     Deadline? deadline,
     bool selectCreated = true,
-  }) => _write(() async {
-    final node = await service.createNode(
+  }) => _write(
+    () => service.createNode(
       parentId: parentId,
       title: title,
       deadline: deadline,
-    );
-    if (parentId != null) expandedIds.add(parentId);
-    if (selectCreated) {
-      _selectedId = node.id;
-      _eventDetailOpen = true;
-    }
-    return node;
-  });
+    ),
+    onSuccess: (node) {
+      if (parentId != null) expandedIds.add(parentId);
+      if (selectCreated) {
+        _selectedId = node.id;
+        _eventDetailOpen = true;
+      }
+    },
+  );
 
-  Future<void> updateTitle(String nodeId, String title) =>
+  Future<NodeWriteResult<void>> updateTitle(String nodeId, String title) =>
       _write(() => service.updateTitle(nodeId, title));
 
-  Future<void> updateNotes(String nodeId, String notes) =>
+  Future<NodeWriteResult<void>> updateNotes(String nodeId, String notes) =>
       _write(() => service.updateNotes(nodeId, notes));
 
-  Future<void> updateDeadline(String nodeId, Deadline? deadline) =>
-      _write(() => service.updateDeadline(nodeId, deadline));
+  Future<NodeWriteResult<void>> updateDeadline(
+    String nodeId,
+    Deadline? deadline,
+  ) => _write(() => service.updateDeadline(nodeId, deadline));
 
-  Future<void> setCompleted(String nodeId, bool completed) =>
+  Future<NodeWriteResult<void>> setCompleted(String nodeId, bool completed) =>
       _write(() => service.setLeafCompleted(nodeId, completed));
 
-  Future<void> delete(String nodeId) => _write(() async {
-    _lastDeletion = await service.deleteSubtree(nodeId);
-    if (_selectedId == nodeId ||
-        _lastDeletion!.nodes.any((node) => node.id == _selectedId)) {
-      _selectedId = null;
-    }
-  });
+  Future<NodeWriteResult<DeletedSubtree>> delete(String nodeId) => _write(
+    () => service.deleteSubtree(nodeId),
+    onSuccess: (deletion) {
+      _lastDeletion = deletion;
+      if (_selectedId == nodeId ||
+          deletion.nodes.any((node) => node.id == _selectedId)) {
+        _selectedId = null;
+      }
+    },
+  );
 
-  Future<void> undoDelete() => _write(() async {
-    final deletion = _lastDeletion;
-    if (deletion == null) return;
-    await service.restoreSubtree(deletion);
-    _selectedId = deletion.nodes.first.id;
-    _lastDeletion = null;
-  });
+  Future<NodeWriteResult<void>> undoDelete() => _write(
+    () async {
+      final deletion = _lastDeletion;
+      if (deletion == null) return;
+      await service.restoreSubtree(deletion);
+    },
+    onSuccess: (_) {
+      final deletion = _lastDeletion;
+      if (deletion == null) return;
+      _selectedId = deletion.nodes.first.id;
+      _lastDeletion = null;
+    },
+  );
 
-  Future<void> move({
+  Future<NodeWriteResult<void>> move({
     required String nodeId,
     String? newParentId,
     int? newIndex,
@@ -163,27 +178,33 @@ class AppController extends ChangeNotifier {
     ),
   );
 
-  Future<void> reorderChildren(String? parentId, List<String> ids) =>
-      _write(() => service.reorderChildren(parentId, ids));
+  Future<NodeWriteResult<void>> reorderChildren(
+    String? parentId,
+    List<String> ids,
+  ) => _write(() => service.reorderChildren(parentId, ids));
 
   void clearError() {
     _error = null;
     notifyListeners();
   }
 
-  Future<T?> _write<T>(Future<T> Function() operation) async {
-    try {
-      final result = await operation();
-      _nodes = await service.loadNodes();
+  Future<NodeWriteResult<T>> _write<T>(
+    Future<T> Function() operation, {
+    void Function(T value)? onSuccess,
+  }) async {
+    final result = await _writer.execute(operation, (value, nodes) {
+      _nodes = nodes;
+      onSuccess?.call(value);
       _chooseSelection();
-      _error = null;
-      notifyListeners();
-      return result;
-    } catch (error) {
-      _error = error;
-      notifyListeners();
-      return null;
+    });
+    switch (result) {
+      case NodeWriteSuccess<T>():
+        _error = null;
+      case NodeWriteFailure<T>(:final error):
+        _error = error;
     }
+    notifyListeners();
+    return result;
   }
 
   void _chooseSelection() {

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:best_todo_list/app/app.dart';
 import 'package:best_todo_list/app/app_controller.dart';
 import 'package:best_todo_list/app/app_theme.dart';
@@ -15,16 +17,17 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../helpers/memory_node_repository.dart';
+import '../helpers/failing_node_repository.dart';
+import '../helpers/write_result.dart';
 
 void main() {
-  late MemoryNodeRepository repository;
+  late FailingNodeRepository repository;
   late AppController controller;
   late DateTime appNow;
   var id = 0;
 
   setUp(() async {
-    repository = MemoryNodeRepository();
+    repository = FailingNodeRepository();
     appNow = DateTime(2026, 8, 11, 9);
     controller = AppController(
       NodeService(
@@ -63,8 +66,67 @@ void main() {
     expect(controller.nodes, hasLength(1));
   });
 
+  testWidgets('创建写入失败时弹窗保留标题并可原地重试', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1100, 760));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(TodoApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('create-event-navigation')),
+    );
+    await tester.pumpAndSettle();
+    final field = find.byType(TextFormField);
+    await tester.enterText(field, '新版发布');
+    await tester.pump();
+    repository.failNextInsert = true;
+    await tester.tap(find.widgetWithText(FilledButton, '创建'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text('创建失败，请重试'), findsOneWidget);
+    expect(tester.widget<TextFormField>(field).controller?.text, '新版发布');
+
+    await tester.tap(find.widgetWithText(FilledButton, '创建'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(controller.nodes.single.title, '新版发布');
+  });
+
+  testWidgets('重命名写入失败时弹窗保留标题并可原地重试', (tester) async {
+    final root = await expectWriteSuccess(
+      controller.create(title: '旧名称', selectCreated: false),
+    );
+    controller.showEventOverview();
+    await tester.binding.setSurfaceSize(const Size(1100, 760));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(TodoApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(ValueKey<String>('event-menu-${root.id}')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('重命名'));
+    await tester.pumpAndSettle();
+    final field = find.byType(TextFormField);
+    await tester.enterText(field, '新名称');
+    await tester.pump();
+    repository.failNextUpdate = true;
+    await tester.tap(find.widgetWithText(FilledButton, '保存'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text('保存失败，请重试'), findsOneWidget);
+    expect(tester.widget<TextFormField>(field).controller?.text, '新名称');
+    expect(controller.tree.nodes[root.id]!.title, '旧名称');
+
+    await tester.tap(find.widgetWithText(FilledButton, '保存'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(controller.tree.nodes[root.id]!.title, '新名称');
+  });
+
   testWidgets('事件详情可快速新增并完成叶子任务', (tester) async {
-    final root = await controller.create(title: '新版发布');
+    final root = await expectWriteSuccess(controller.create(title: '新版发布'));
     await tester.binding.setSurfaceSize(const Size(1100, 760));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(TodoApp(controller: controller));
@@ -96,7 +158,7 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(find.text('标题不能为空'), findsOneWidget);
-    expect(controller.tree.childrenOf(root!.id), isEmpty);
+    expect(controller.tree.childrenOf(root.id), isEmpty);
     await tester.enterText(quickAdd, '确认最终文案');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
@@ -239,14 +301,39 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('备注写入失败时保留内容并明确显示可重试状态', (tester) async {
+    await expectWriteSuccess(controller.create(title: '新版发布'));
+    await tester.binding.setSurfaceSize(const Size(1100, 760));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(TodoApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    final notes = find.byKey(const ValueKey<String>('detail-notes-field'));
+    repository.failNextUpdate = true;
+    await tester.enterText(notes, '发布前确认回滚方案');
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+
+    expect(find.text('保存失败，将重试'), findsOneWidget);
+    expect(tester.widget<TextField>(notes).controller?.text, '发布前确认回滚方案');
+    expect(controller.selectedNode!.notes, isEmpty);
+
+    await tester.tap(find.text('新版发布').first);
+    await tester.pumpAndSettle();
+    expect(find.text('已保存'), findsOneWidget);
+    expect(controller.selectedNode!.notes, '发布前确认回滚方案');
+  });
+
   testWidgets('时间线固定展示按完成日期归档的已完成任务', (tester) async {
-    final root = await controller.create(title: '有日期任务');
+    final root = await expectWriteSuccess(controller.create(title: '有日期任务'));
     await controller.updateDeadline(
-      root!.id,
+      root.id,
       TimedDeadline(DateTime(2026, 8, 11, 16)),
     );
-    final completed = await controller.create(title: '今天完成的任务');
-    await controller.setCompleted(completed!.id, true);
+    final completed = await expectWriteSuccess(
+      controller.create(title: '今天完成的任务'),
+    );
+    await controller.setCompleted(completed.id, true);
     await tester.binding.setSurfaceSize(const Size(1100, 760));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(TodoApp(controller: controller));
@@ -280,9 +367,9 @@ void main() {
   });
 
   testWidgets('逾期任务卡片使用明确的可见标题颜色', (tester) async {
-    final task = await controller.create(title: '逾期任务');
+    final task = await expectWriteSuccess(controller.create(title: '逾期任务'));
     await controller.updateDeadline(
-      task!.id,
+      task.id,
       TimedDeadline(DateTime(2026, 8, 11, 8)),
     );
     controller.setView(AppView.timeline);
@@ -352,8 +439,8 @@ void main() {
   });
 
   testWidgets('macOS 事件头使用确定型进度环', (tester) async {
-    final root = await controller.create(title: '新版发布');
-    await controller.create(parentId: root!.id, title: '确认文案');
+    final root = await expectWriteSuccess(controller.create(title: '新版发布'));
+    await controller.create(parentId: root.id, title: '确认文案');
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
     try {
       await tester.binding.setSurfaceSize(const Size(1100, 760));
@@ -421,6 +508,41 @@ void main() {
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }
+  });
+
+  testWidgets('标题弹窗提交中忽略重复 Enter', (tester) async {
+    final completion = Completer<String?>();
+    var submitCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (context) => CreateNodeDialog(
+                onSubmit: (_) {
+                  submitCount += 1;
+                  return completion.future;
+                },
+              ),
+            ),
+            child: const Text('打开'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField), '新事件');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+
+    expect(submitCount, 1);
+    completion.complete(null);
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
   });
 
   testWidgets('macOS 重命名复用桌面 Material 标题表单', (tester) async {

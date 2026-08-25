@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/app_controller.dart';
+import '../../app/node_write_result.dart';
 import '../../app/app_theme.dart';
 import '../../domain/node_tree.dart';
 import '../../domain/todo_node.dart';
@@ -149,17 +150,18 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
       return;
     }
     setState(() => inlineDraftSubmitting = true);
-    final created = await widget.controller.create(
+    final result = await widget.controller.create(
       parentId: parentId,
       title: title,
       selectCreated: false,
     );
     if (!mounted) return;
-    if (created == null) {
+    if (result case NodeWriteFailure()) {
       setState(() => inlineDraftSubmitting = false);
       inlineDraftFocusNode.requestFocus();
       return;
     }
+    final created = (result as NodeWriteSuccess<TodoNode>).value;
     highlightCreated(created.id);
     _closeInlineDraft();
   }
@@ -231,9 +233,9 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
       inlineRenameSubmitting = true;
       inlineRenameFailed = false;
     });
-    await widget.controller.updateTitle(nodeId, title);
+    final result = await widget.controller.updateTitle(nodeId, title);
     if (!mounted) return;
-    if (widget.controller.error != null) {
+    if (result case NodeWriteFailure()) {
       setState(() {
         inlineRenameSubmitting = false;
         inlineRenameFailed = true;
@@ -1261,13 +1263,15 @@ class _CardQuickAddState extends State<_CardQuickAdd> {
   Future<void> submit() async {
     final title = textController.text.trim();
     if (title.isEmpty) return;
-    final created = await widget.controller.create(
+    final result = await widget.controller.create(
       parentId: widget.parentId,
       title: title,
       selectCreated: false,
     );
-    textController.clear();
-    if (created != null) widget.onCreated(created.id);
+    if (result case NodeWriteSuccess<TodoNode>(:final value)) {
+      textController.clear();
+      widget.onCreated(value.id);
+    }
     if (mounted) focusNode.requestFocus();
   }
 
