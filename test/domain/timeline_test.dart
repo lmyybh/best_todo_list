@@ -24,15 +24,69 @@ void main() {
     manualOrder: 1000,
   );
 
+  TimelineProjection projectionFor(
+    NodeTree tree, {
+    DateTime? date,
+    bool later = false,
+  }) {
+    final timeline = TimelineExperience(now);
+    if (date != null) timeline.selectDate(date);
+    if (later) timeline.selectLater();
+    return timeline.project(tree);
+  }
+
+  test('时间线经验集中管理窗口、选择与跨日刷新', () {
+    final timeline = TimelineExperience(DateTime(2026, 8, 13, 9));
+
+    expect(timeline.windowStart, DateTime(2026, 8, 10));
+    expect(timeline.dates.last, DateTime(2026, 8, 15));
+
+    timeline.shiftWindow(1);
+    expect(timeline.selectedDate, DateTime(2026, 8, 17));
+    timeline.selectLater();
+    expect(timeline.laterSelected, isTrue);
+    timeline.moveSelection(-1);
+    expect(timeline.selectedDate, DateTime(2026, 8, 22));
+    timeline.resetToToday();
+    expect(timeline.selectedDate, DateTime(2026, 8, 13));
+
+    expect(timeline.refresh(DateTime(2026, 8, 14, 0, 1)), isTrue);
+    expect(timeline.selectedDate, DateTime(2026, 8, 14));
+
+    timeline.shiftWindow(1);
+    final selected = timeline.selectedDate;
+    timeline.refresh(DateTime(2026, 8, 15, 0, 1));
+    expect(timeline.selectedDate, selected);
+  });
+
+  test('时间线投影一次给出选中日分组、计数与更晚数量', () {
+    final timeline = TimelineExperience(now);
+    final tree = NodeTree(<TodoNode>[
+      node('overdue', deadline: DateTime(2026, 8, 10, 18)),
+      node('today', deadline: DateTime(2026, 8, 11, 18)),
+      node('later', deadline: DateTime(2026, 8, 20, 18)),
+      node('none'),
+    ]);
+
+    final projection = timeline.project(tree);
+
+    expect(projection.overdue.map((entry) => entry.node.id), ['overdue']);
+    expect(projection.regular.map((entry) => entry.node.id), ['today']);
+    expect(projection.countFor(now), 1);
+    expect(projection.laterCount, 2);
+  });
+
   test('今天可以包含逾期并将逾期置顶', () {
     final tree = NodeTree(<TodoNode>[
       node('today', deadline: DateTime(2026, 8, 11, 18)),
       node('overdue', deadline: DateTime(2026, 8, 10, 18)),
       node('tomorrow', deadline: DateTime(2026, 8, 12, 9)),
     ]);
-    final result = TimelineQuery(
-      now,
-    ).entriesForDate(tree, now, includeOverdue: true);
+    final projection = projectionFor(tree);
+    final result = <TimelineEntry>[
+      ...projection.overdue,
+      ...projection.regular,
+    ];
     expect(result.map((entry) => entry.node.id), <String>['overdue', 'today']);
   });
 
@@ -42,12 +96,8 @@ void main() {
       node('sunday', deadline: DateTime(2026, 8, 16, 22)),
       node('next-monday', deadline: DateTime(2026, 8, 17, 9)),
     ]);
-    final monday = TimelineQuery(
-      now,
-    ).entriesForDate(tree, DateTime(2026, 8, 10));
-    final sunday = TimelineQuery(
-      now,
-    ).entriesForDate(tree, DateTime(2026, 8, 16));
+    final monday = projectionFor(tree, date: DateTime(2026, 8, 10)).regular;
+    final sunday = projectionFor(tree, date: DateTime(2026, 8, 16)).regular;
     expect(monday.map((entry) => entry.node.id), <String>['monday']);
     expect(sunday.map((entry) => entry.node.id), <String>['sunday']);
   });
@@ -57,7 +107,7 @@ void main() {
       node('none'),
       node('future', deadline: DateTime(2026, 8, 20)),
     ]);
-    final result = TimelineQuery(now).laterEntries(tree, DateTime(2026, 8, 15));
+    final result = projectionFor(tree, later: true).regular;
     expect(result.map((entry) => entry.node.id), <String>['future', 'none']);
   });
 
@@ -66,7 +116,7 @@ void main() {
       node('event'),
       node('leaf', parentId: 'event'),
     ]);
-    final result = TimelineQuery(now).laterEntries(tree, DateTime(2026, 8, 15));
+    final result = projectionFor(tree, later: true).regular;
     expect(result.map((entry) => entry.node.id), <String>['leaf']);
   });
 
@@ -80,9 +130,8 @@ void main() {
       node('new', completedAt: DateTime.utc(2026, 8, 11, 2)),
       node('other-day', completedAt: DateTime.utc(2026, 8, 10, 2)),
     ]);
-    final query = TimelineQuery(now);
-    expect(query.entriesForDate(tree, DateTime(2026, 8, 12)), isEmpty);
-    final shown = query.completedEntriesForDate(tree, now);
+    expect(projectionFor(tree, date: DateTime(2026, 8, 12)).regular, isEmpty);
+    final shown = projectionFor(tree).completed;
     expect(shown.map((entry) => entry.node.id), <String>['new', 'old']);
   });
 
@@ -92,17 +141,9 @@ void main() {
       node('today', deadline: DateTime(2026, 8, 11, 18)),
       node('tomorrow', deadline: DateTime(2026, 8, 12, 9)),
     ]);
-    final query = TimelineQuery(now);
-    expect(
-      query.entriesForDate(tree, DateTime(2026, 8, 11)).map((e) => e.node.id),
-      <String>['today'],
-    );
-    expect(
-      query
-          .entriesForDate(tree, DateTime(2026, 8, 11), includeOverdue: true)
-          .map((e) => e.node.id),
-      <String>['overdue', 'today'],
-    );
+    final projection = projectionFor(tree);
+    expect(projection.regular.map((e) => e.node.id), <String>['today']);
+    expect(projection.overdue.map((e) => e.node.id), <String>['overdue']);
   });
 
   test('更晚查询包含窗口之后和无日期任务', () {
@@ -111,7 +152,7 @@ void main() {
       node('later', deadline: DateTime(2026, 8, 16)),
       node('none'),
     ]);
-    final result = TimelineQuery(now).laterEntries(tree, DateTime(2026, 8, 15));
+    final result = projectionFor(tree, later: true).regular;
     expect(result.map((entry) => entry.node.id), <String>['later', 'none']);
   });
 
@@ -122,9 +163,9 @@ void main() {
       node('a', deadline: DateTime(2027, 1, 1, 9)),
       node('old-year', deadline: DateTime(2026, 12, 31, 23)),
     ]);
-    final result = TimelineQuery(
-      newYear,
-    ).entriesForDate(tree, DateTime(2027, 1, 1));
+    final timeline = TimelineExperience(newYear)
+      ..selectDate(DateTime(2027, 1, 1));
+    final result = timeline.project(tree).regular;
     expect(result.map((entry) => entry.node.id), <String>['a', 'b']);
   });
 
@@ -137,6 +178,6 @@ void main() {
         completedAt: DateTime.utc(2026, 8, 11, 10),
       ),
     ]);
-    expect(TimelineQuery(now).countForDate(tree, now), 2);
+    expect(projectionFor(tree).countFor(now), 2);
   });
 }

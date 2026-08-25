@@ -55,13 +55,13 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('timeline-next-week')));
     await tester.pumpAndSettle();
-    expect(controller.timelineWindowStart, DateTime(2026, 8, 17));
+    expect(controller.timelineProjection.windowStart, DateTime(2026, 8, 17));
     await tester.tap(find.byKey(const ValueKey<String>('timeline-today')));
     await tester.pumpAndSettle();
-    expect(controller.selectedTimelineDate, DateTime(2026, 8, 13));
+    expect(controller.timelineProjection.selectedDate, DateTime(2026, 8, 13));
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pumpAndSettle();
-    expect(controller.selectedTimelineDate, DateTime(2026, 8, 14));
+    expect(controller.timelineProjection.selectedDate, DateTime(2026, 8, 14));
   });
 }

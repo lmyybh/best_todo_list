@@ -13,33 +13,21 @@ class TimelineView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final entries = controller.selectedDateEntries;
-    final completed = controller.selectedDateCompletedEntries;
-    final overdue =
-        !controller.timelineLaterSelected &&
-            _sameDate(controller.selectedTimelineDate, controller.now)
-        ? entries
-              .where(
-                (entry) =>
-                    (entry.node.deadline?.isOverdue(controller.now) ?? false) &&
-                    !entry.isComplete,
-              )
-              .toList()
-        : const <TimelineEntry>[];
-    final regular = overdue.isEmpty
-        ? entries
-        : entries.where((entry) => !overdue.contains(entry)).toList();
+    final projection = controller.timelineProjection;
+    final overdue = projection.overdue;
+    final regular = projection.regular;
+    final completed = projection.completed;
 
     return Focus(
       autofocus: true,
       onKeyEvent: (_, event) {
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
         if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-          _moveSelection(-1);
+          controller.moveTimelineSelection(-1);
           return KeyEventResult.handled;
         }
         if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-          _moveSelection(1);
+          controller.moveTimelineSelection(1);
           return KeyEventResult.handled;
         }
         return KeyEventResult.ignored;
@@ -49,10 +37,10 @@ class TimelineView extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: 880),
           child: Column(
             children: <Widget>[
-              _DateNavigator(controller: controller),
-              _TimelineContext(controller: controller),
+              _DateNavigator(controller: controller, projection: projection),
+              _TimelineContext(projection: projection),
               Expanded(
-                child: entries.isEmpty && completed.isEmpty
+                child: overdue.isEmpty && regular.isEmpty && completed.isEmpty
                     ? const _TimelineEmpty()
                     : ListView(
                         key: const ValueKey<String>('timeline-task-list'),
@@ -72,11 +60,11 @@ class TimelineView extends StatelessWidget {
                             const SizedBox(height: 20),
                           ],
                           _TimelineSection(
-                            title: controller.timelineLaterSelected
+                            title: projection.laterSelected
                                 ? '更晚'
                                 : _relativeDateLabel(
-                                    controller.selectedTimelineDate,
-                                    controller.now,
+                                    projection.selectedDate,
+                                    projection.now,
                                   ),
                             count: regular.length,
                           ),
@@ -106,37 +94,18 @@ class TimelineView extends StatelessWidget {
       ),
     );
   }
-
-  void _moveSelection(int direction) {
-    final dates = controller.timelineDates;
-    if (controller.timelineLaterSelected) {
-      if (direction < 0) controller.selectTimelineDate(dates.last);
-      return;
-    }
-    final currentIndex = dates.indexWhere(
-      (date) => _sameDate(date, controller.selectedTimelineDate),
-    );
-    if (currentIndex < 0) return;
-    final next = currentIndex + direction;
-    if (next < 0) {
-      controller.shiftTimelineWindow(-1);
-    } else if (next >= dates.length) {
-      controller.selectTimelineLater();
-    } else {
-      controller.selectTimelineDate(dates[next]);
-    }
-  }
 }
 
 class _DateNavigator extends StatelessWidget {
-  const _DateNavigator({required this.controller});
+  const _DateNavigator({required this.controller, required this.projection});
 
   final AppController controller;
+  final TimelineProjection projection;
 
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
-    final start = controller.timelineWindowStart;
+    final start = projection.windowStart;
     return Padding(
       padding: const EdgeInsets.fromLTRB(30, 24, 30, 0),
       child: Column(
@@ -185,27 +154,22 @@ class _DateNavigator extends StatelessWidget {
             ),
             child: Row(
               children: <Widget>[
-                for (final date in controller.timelineDates)
+                for (final date in projection.dates)
                   Expanded(
                     child: _DateButton(
                       date: date,
-                      now: controller.now,
-                      count: controller.timelineCount(date),
+                      now: projection.now,
+                      count: projection.countFor(date),
                       selected:
-                          !controller.timelineLaterSelected &&
-                          _sameDate(date, controller.selectedTimelineDate),
+                          !projection.laterSelected &&
+                          _sameDate(date, projection.selectedDate),
                       onPressed: () => controller.selectTimelineDate(date),
                     ),
                   ),
                 Expanded(
                   child: _LaterButton(
-                    selected: controller.timelineLaterSelected,
-                    count: TimelineQuery(controller.now)
-                        .laterEntries(
-                          controller.tree,
-                          controller.timelineDates.last,
-                        )
-                        .length,
+                    selected: projection.laterSelected,
+                    count: projection.laterCount,
                     onPressed: controller.selectTimelineLater,
                   ),
                 ),
@@ -338,9 +302,9 @@ class _DateSurface extends StatelessWidget {
 }
 
 class _TimelineContext extends StatelessWidget {
-  const _TimelineContext({required this.controller});
+  const _TimelineContext({required this.projection});
 
-  final AppController controller;
+  final TimelineProjection projection;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -348,9 +312,9 @@ class _TimelineContext extends StatelessWidget {
     child: Align(
       alignment: Alignment.centerLeft,
       child: Text(
-        controller.timelineLaterSelected
+        projection.laterSelected
             ? '更晚的任务'
-            : '${controller.selectedTimelineDate.month} 月 ${controller.selectedTimelineDate.day} 日',
+            : '${projection.selectedDate.month} 月 ${projection.selectedDate.day} 日',
         style: TextStyle(color: AppColors.of(context).muted, fontSize: 10),
       ),
     ),

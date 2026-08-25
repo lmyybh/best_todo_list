@@ -10,22 +10,19 @@ enum AppView { events, timeline }
 
 class AppController extends ChangeNotifier {
   AppController(this.service, {DateTime Function()? clock})
-    : _clock = clock ?? DateTime.now,
-      _now = (clock ?? DateTime.now)();
+    : _clock = clock ?? DateTime.now {
+    _timeline = TimelineExperience(_clock());
+  }
 
   final NodeService service;
   final DateTime Function() _clock;
-  DateTime _now;
+  late final TimelineExperience _timeline;
   List<TodoNode> _nodes = const <TodoNode>[];
   String? _selectedId;
   bool _loading = true;
   Object? _error;
   DeletedSubtree? _lastDeletion;
   bool _eventDetailOpen = false;
-  late DateTime _selectedTimelineDate = _startOfDay(_now);
-  late DateTime _timelineWindowStart = _startOfWeek(_now);
-  bool _timelineLaterSelected = false;
-  bool _timelineWindowWasMoved = false;
 
   AppView view = AppView.events;
   final Set<String> expandedIds = <String>{};
@@ -39,45 +36,11 @@ class AppController extends ChangeNotifier {
       _selectedId == null ? null : tree.nodes[_selectedId];
   bool get canUndoDelete => _lastDeletion != null;
   bool get eventDetailOpen => _eventDetailOpen;
-  DateTime get now => _now;
-  DateTime get selectedTimelineDate => _selectedTimelineDate;
-  DateTime get timelineWindowStart => _timelineWindowStart;
-  bool get timelineLaterSelected => _timelineLaterSelected;
-  List<DateTime> get timelineDates => List<DateTime>.generate(
-    6,
-    (index) => _timelineWindowStart.add(Duration(days: index)),
-  );
-  List<TimelineEntry> get selectedDateEntries => _timelineLaterSelected
-      ? TimelineQuery(_now).laterEntries(tree, timelineDates.last)
-      : TimelineQuery(_now).entriesForDate(
-          tree,
-          _selectedTimelineDate,
-          includeOverdue: _sameDate(_selectedTimelineDate, _now),
-        );
-
-  List<TimelineEntry> get selectedDateCompletedEntries => _timelineLaterSelected
-      ? const <TimelineEntry>[]
-      : TimelineQuery(
-          _now,
-        ).completedEntriesForDate(tree, _selectedTimelineDate);
-
-  int timelineCount(DateTime date) =>
-      TimelineQuery(_now).countForDate(tree, date);
+  TimelineProjection get timelineProjection => _timeline.project(tree);
+  DateTime get now => _timeline.now;
 
   void refreshTime() {
-    final next = _clock();
-    final dateChanged =
-        next.year != _now.year ||
-        next.month != _now.month ||
-        next.day != _now.day;
-    final timezoneChanged = next.timeZoneOffset != _now.timeZoneOffset;
-    _now = next;
-    if (dateChanged && !_timelineWindowWasMoved) {
-      _selectedTimelineDate = _startOfDay(next);
-      _timelineWindowStart = _startOfWeek(next);
-      _timelineLaterSelected = false;
-    }
-    if (dateChanged || timezoneChanged) notifyListeners();
+    if (_timeline.refresh(_clock())) notifyListeners();
   }
 
   Future<void> load() async {
@@ -112,29 +75,27 @@ class AppController extends ChangeNotifier {
   }
 
   void selectTimelineDate(DateTime date) {
-    _selectedTimelineDate = _startOfDay(date);
-    _timelineLaterSelected = false;
+    _timeline.selectDate(date);
     notifyListeners();
   }
 
   void selectTimelineLater() {
-    _timelineLaterSelected = true;
+    _timeline.selectLater();
+    notifyListeners();
+  }
+
+  void moveTimelineSelection(int direction) {
+    _timeline.moveSelection(direction);
     notifyListeners();
   }
 
   void shiftTimelineWindow(int weeks) {
-    _timelineWindowStart = _timelineWindowStart.add(Duration(days: weeks * 7));
-    _selectedTimelineDate = _timelineWindowStart;
-    _timelineLaterSelected = false;
-    _timelineWindowWasMoved = true;
+    _timeline.shiftWindow(weeks);
     notifyListeners();
   }
 
   void resetTimelineToToday() {
-    _selectedTimelineDate = _startOfDay(_now);
-    _timelineWindowStart = _startOfWeek(_now);
-    _timelineLaterSelected = false;
-    _timelineWindowWasMoved = false;
+    _timeline.resetToToday();
     notifyListeners();
   }
 
@@ -239,13 +200,4 @@ class AppController extends ChangeNotifier {
     service.repository.close();
     super.dispose();
   }
-
-  static DateTime _startOfDay(DateTime date) =>
-      DateTime(date.year, date.month, date.day);
-
-  static DateTime _startOfWeek(DateTime date) =>
-      _startOfDay(date).subtract(Duration(days: date.weekday - 1));
-
-  static bool _sameDate(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
 }
