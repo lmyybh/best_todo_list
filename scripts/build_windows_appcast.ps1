@@ -6,21 +6,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-$pubspecPath = Join-Path $projectRoot 'pubspec.yaml'
-$pubspec = Get-Content -LiteralPath $pubspecPath -Raw
-$versionMatch = [regex]::Match(
-    $pubspec,
-    '(?m)^version:\s*(\d+\.\d+\.\d+)\s*$'
-)
-if (-not $versionMatch.Success) {
-    throw 'pubspec.yaml version must use the X.Y.Z format.'
-}
-
-$version = $versionMatch.Groups[1].Value
-$installerName = "best_todo_list-$version-windows-x64-setup.exe"
-$installerPath = Join-Path $projectRoot "build\installer\$installerName"
-if (-not (Test-Path -LiteralPath $installerPath)) {
-    throw "Installer was not found at $installerPath"
+. (Join-Path $PSScriptRoot 'windows_release_metadata.ps1')
+$release = Get-WindowsReleaseMetadata -ProjectRoot $projectRoot
+if (-not (Test-Path -LiteralPath $release.InstallerPath)) {
+    throw "Installer was not found at $($release.InstallerPath)"
 }
 if (-not (Test-Path -LiteralPath $PrivateKeyPath)) {
     throw 'The WinSparkle private key was not found.'
@@ -35,20 +24,20 @@ if (-not (Test-Path -LiteralPath $signUpdatePath)) {
 }
 
 $signature = (
-    (& $signUpdatePath $installerPath $PrivateKeyPath | Out-String) -replace '\s', ''
+    (& $signUpdatePath $release.InstallerPath $PrivateKeyPath | Out-String) -replace '\s', ''
 )
 if ($LASTEXITCODE -ne 0 -or $signature -notmatch '^[A-Za-z0-9+/]+={0,2}$') {
     throw 'WinSparkle failed to sign the installer.'
 }
 
-$installerLength = (Get-Item -LiteralPath $installerPath).Length
-$releaseUrl = "https://github.com/lmyybh/best_todo_list/releases/tag/v$version"
+$installerLength = (Get-Item -LiteralPath $release.InstallerPath).Length
+$releaseUrl = "https://github.com/lmyybh/best_todo_list/releases/tag/v$($release.Version)"
 $installerUrl = (
     'https://github.com/lmyybh/best_todo_list/releases/latest/download/' +
-    $installerName
+    "$($release.InstallerBaseName).exe"
 )
 $pubDate = [DateTimeOffset]::Now.ToString('ddd, dd MMM yyyy HH:mm:ss zzz', [Globalization.CultureInfo]::InvariantCulture)
-$appcastPath = Join-Path $projectRoot 'build\installer\appcast-windows.xml'
+$appcastPath = Join-Path $release.OutputDir 'appcast-windows.xml'
 $appcast = @"
 <?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
@@ -57,12 +46,12 @@ $appcast = @"
     <description>Best Todo List Windows release feed</description>
     <language>zh-CN</language>
     <item>
-      <title>Version $version</title>
+      <title>Version $($release.Version)</title>
       <sparkle:releaseNotesLink>$releaseUrl</sparkle:releaseNotesLink>
       <pubDate>$pubDate</pubDate>
       <enclosure url="$installerUrl"
                  sparkle:dsaSignature="$signature"
-                 sparkle:version="$version"
+                 sparkle:version="$($release.Version)"
                  sparkle:os="windows"
                  length="$installerLength"
                  type="application/octet-stream" />

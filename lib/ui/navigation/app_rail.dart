@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../app/app_controller.dart';
 import '../../app/node_write_result.dart';
 import '../../app/app_theme.dart';
+import '../../services/update_controller.dart';
 import '../../services/update_service.dart';
 import '../../services/windows_update_installer.dart';
 import '../common/about_update_dialog.dart';
@@ -70,16 +71,21 @@ class AppRail extends StatelessWidget {
     );
   }
 
-  void _showAboutAndUpdates(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AboutUpdateDialog(
-        service: GitHubUpdateService(),
-        installUpdate: Platform.isWindows
-            ? WindowsUpdateInstaller().checkForUpdates
-            : null,
-      ),
+  Future<void> _showAboutAndUpdates(BuildContext context) async {
+    final controller = UpdateController(
+      GitHubUpdateService(),
+      installUpdate: Platform.isWindows
+          ? WindowsUpdateInstaller().checkForUpdates
+          : null,
     );
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AboutUpdateDialog(controller: controller),
+      );
+    } finally {
+      controller.dispose();
+    }
   }
 
   Future<void> _createEvent(BuildContext context) async {

@@ -7,16 +7,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-$pubspecPath = Join-Path $projectRoot 'pubspec.yaml'
-$pubspec = Get-Content -LiteralPath $pubspecPath -Raw
-$versionMatch = [regex]::Match(
-    $pubspec,
-    '(?m)^version:\s*(\d+\.\d+\.\d+)\s*$'
-)
-if (-not $versionMatch.Success) {
-    throw 'pubspec.yaml version must use the X.Y.Z format.'
-}
-$version = $versionMatch.Groups[1].Value
+. (Join-Path $PSScriptRoot 'windows_release_metadata.ps1')
+$release = Get-WindowsReleaseMetadata -ProjectRoot $projectRoot
 
 if (-not $FlutterPath) {
     $flutterCommand = Get-Command flutter -ErrorAction SilentlyContinue
@@ -56,22 +48,21 @@ if (-not (Test-Path -LiteralPath $appExe)) {
     throw "Windows release executable was not found at $appExe"
 }
 
-$outputDir = Join-Path $projectRoot 'build\installer'
-New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+New-Item -ItemType Directory -Path $release.OutputDir -Force | Out-Null
 $installerScript = Join-Path $projectRoot 'installer\windows\best_todo_list.iss'
 
 & $isccPath `
-    "/DMyAppVersion=$version" `
+    "/DMyAppVersion=$($release.Version)" `
     "/DBuildDir=$buildDir" `
-    "/DOutputDir=$outputDir" `
+    "/DOutputDir=$($release.OutputDir)" `
+    "/DOutputBaseName=$($release.InstallerBaseName)" `
     $installerScript
 if ($LASTEXITCODE -ne 0) {
     throw "Inno Setup compilation failed with exit code $LASTEXITCODE"
 }
 
-$installerPath = Join-Path $outputDir "best_todo_list-$version-windows-x64-setup.exe"
-if (-not (Test-Path -LiteralPath $installerPath)) {
-    throw "Installer was not created at $installerPath"
+if (-not (Test-Path -LiteralPath $release.InstallerPath)) {
+    throw "Installer was not created at $($release.InstallerPath)"
 }
 
-Get-Item -LiteralPath $installerPath | Select-Object FullName, Length, LastWriteTime
+Get-Item -LiteralPath $release.InstallerPath | Select-Object FullName, Length, LastWriteTime

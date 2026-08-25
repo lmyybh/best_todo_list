@@ -1,95 +1,49 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
-import '../../services/update_service.dart';
+import '../../services/update_controller.dart';
 
 class AboutUpdateDialog extends StatefulWidget {
-  const AboutUpdateDialog({
-    required this.service,
-    this.installUpdate,
-    super.key,
-  });
+  const AboutUpdateDialog({required this.controller, super.key});
 
-  final UpdateService service;
-  final Future<void> Function()? installUpdate;
+  final UpdateController controller;
 
   @override
   State<AboutUpdateDialog> createState() => _AboutUpdateDialogState();
 }
 
 class _AboutUpdateDialogState extends State<AboutUpdateDialog> {
-  AppVersion? _currentVersion;
-  ReleaseInfo? _availableRelease;
-  String? _message;
-  bool _checking = false;
-
   @override
   void initState() {
     super.initState();
-    _loadCurrentVersion();
+    widget.controller.addListener(_handleChanged);
+    unawaited(widget.controller.initialize());
   }
 
-  Future<void> _loadCurrentVersion() async {
-    try {
-      final version = await widget.service.loadCurrentVersion();
-      if (mounted) setState(() => _currentVersion = version);
-    } catch (_) {
-      if (mounted) setState(() => _message = '无法读取当前版本');
-    }
+  void _handleChanged() {
+    if (mounted) setState(() {});
   }
 
-  Future<void> _checkForUpdates() async {
-    final currentVersion = _currentVersion;
-    if (currentVersion == null) return;
-    setState(() {
-      _checking = true;
-      _message = null;
-      _availableRelease = null;
-    });
-
-    try {
-      final release = await widget.service.fetchLatestRelease();
-      if (!mounted) return;
-      setState(() {
-        if (release == null) {
-          _message = '尚未发布可用版本';
-        } else if (release.isNewerThan(currentVersion)) {
-          _availableRelease = release;
-          _message = '发现新版本 ${release.version}';
-        } else {
-          _message = '当前已是最新版本';
-        }
-      });
-    } catch (error) {
-      if (mounted) setState(() => _message = '检查失败：$error');
-    } finally {
-      if (mounted) setState(() => _checking = false);
-    }
+  @override
+  void didUpdateWidget(covariant AboutUpdateDialog oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(oldWidget.controller, widget.controller)) return;
+    oldWidget.controller.removeListener(_handleChanged);
+    widget.controller.addListener(_handleChanged);
+    unawaited(widget.controller.initialize());
   }
 
-  Future<void> _openReleasePage() async {
-    final release = _availableRelease;
-    if (release == null) return;
-    try {
-      final opened = await widget.service.openReleasePage(release.pageUri);
-      if (mounted && !opened) {
-        setState(() => _message = '无法打开系统浏览器');
-      }
-    } catch (_) {
-      if (mounted) setState(() => _message = '无法打开系统浏览器');
-    }
-  }
-
-  Future<void> _installUpdate() async {
-    try {
-      await widget.installUpdate!();
-    } catch (error) {
-      if (mounted) setState(() => _message = '启动更新失败：$error');
-    }
+  @override
+  void dispose() {
+    widget.controller.removeListener(_handleChanged);
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final release = _availableRelease;
+    final state = widget.controller.state;
+    final release = state.availableRelease;
     return AlertDialog(
       title: const Text('关于 todo'),
       content: SizedBox(
@@ -99,14 +53,17 @@ class _AboutUpdateDialogState extends State<AboutUpdateDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text(
-              _currentVersion == null
+              state.currentVersion == null
                   ? '正在读取版本…'
-                  : '当前版本 ${_currentVersion!.display}',
+                  : '当前版本 ${state.currentVersion!.display}',
               key: const ValueKey<String>('current-app-version'),
             ),
-            if (_message != null) ...<Widget>[
+            if (state.message != null) ...<Widget>[
               const SizedBox(height: 16),
-              Text(_message!, key: const ValueKey<String>('update-message')),
+              Text(
+                state.message!,
+                key: const ValueKey<String>('update-message'),
+              ),
             ],
             if (release != null && release.notes.trim().isNotEmpty) ...<Widget>[
               const SizedBox(height: 12),
@@ -128,21 +85,21 @@ class _AboutUpdateDialogState extends State<AboutUpdateDialog> {
         if (release != null)
           OutlinedButton(
             key: ValueKey<String>(
-              widget.installUpdate == null
-                  ? 'open-release-page'
-                  : 'install-update',
+              widget.controller.usesInstaller
+                  ? 'install-update'
+                  : 'open-release-page',
             ),
-            onPressed: widget.installUpdate == null
-                ? _openReleasePage
-                : _installUpdate,
-            child: Text(widget.installUpdate == null ? '前往下载' : '下载并安装'),
+            onPressed: state.acting
+                ? null
+                : widget.controller.performAvailableAction,
+            child: Text(widget.controller.usesInstaller ? '下载并安装' : '前往下载'),
           ),
         FilledButton(
           key: const ValueKey<String>('check-for-updates'),
-          onPressed: _currentVersion == null || _checking
+          onPressed: state.currentVersion == null || state.checking
               ? null
-              : _checkForUpdates,
-          child: _checking
+              : widget.controller.check,
+          child: state.checking
               ? const SizedBox.square(
                   dimension: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),

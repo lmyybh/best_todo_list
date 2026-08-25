@@ -1,3 +1,4 @@
+import 'package:best_todo_list/services/update_controller.dart';
 import 'package:best_todo_list/services/update_service.dart';
 import 'package:best_todo_list/ui/common/about_update_dialog.dart';
 import 'package:flutter/material.dart';
@@ -94,15 +95,12 @@ Future<void> _pumpDialog(
   UpdateService service, {
   Future<void> Function()? installUpdate,
 }) async {
+  final controller = UpdateController(service, installUpdate: installUpdate);
+  addTearDown(controller.dispose);
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
-        body: Center(
-          child: AboutUpdateDialog(
-            service: service,
-            installUpdate: installUpdate,
-          ),
-        ),
+        body: Center(child: AboutUpdateDialog(controller: controller)),
       ),
     ),
   );

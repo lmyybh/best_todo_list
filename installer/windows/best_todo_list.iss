@@ -10,6 +10,10 @@
   #error OutputDir must be provided by the build script
 #endif
 
+#ifndef OutputBaseName
+  #error OutputBaseName must be provided by the build script
+#endif
+
 #define MyAppName "Best Todo List"
 #define MyAppPublisher "lmyybh"
 #define MyAppExeName "best_todo_list.exe"
@@ -28,7 +32,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir={#OutputDir}
-OutputBaseFilename=best_todo_list-{#MyAppVersion}-windows-x64-setup
+OutputBaseFilename={#OutputBaseName}
 SetupIconFile=..\..\windows\runner\resources\app_icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2

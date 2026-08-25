@@ -31,3 +31,13 @@ _Avoid_: 完整周、七天窗口
 **节点写入结果 (Node Write Result)**:
 一次节点变更及其后数据重载的整体结果，明确分为成功与失败。
 _Avoid_: nullable 成功值、通过全局 error 猜测结果
+
+## 桌面更新与发布
+
+**更新会话 (Update Session)**:
+一次手动更新检查的状态与动作，包括当前版本、可用 Release、错误以及下载或安装选择。
+_Avoid_: Dialog 更新状态、GitHub 弹窗状态
+
+**Windows 发布元数据 (Windows Release Metadata)**:
+由 `pubspec.yaml` 版本派生的 Windows 安装包名、路径与输出目录。
+_Avoid_: 在每个脚本内分别拼装产物名
