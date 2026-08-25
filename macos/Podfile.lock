@@ -1,0 +1,41 @@
+PODS:
+  - auto_updater_macos (0.0.1):
+    - FlutterMacOS
+    - Sparkle
+  - FlutterMacOS (1.0.0)
+  - package_info_plus (0.0.1):
+    - FlutterMacOS
+  - Sparkle (2.9.6)
+  - url_launcher_macos (0.0.1):
+    - FlutterMacOS
+
+DEPENDENCIES:
+  - auto_updater_macos (from `Flutter/ephemeral/.symlinks/plugins/auto_updater_macos/macos`)
+  - FlutterMacOS (from `Flutter/ephemeral`)
+  - package_info_plus (from `Flutter/ephemeral/.symlinks/plugins/package_info_plus/macos`)
+  - url_launcher_macos (from `Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos`)
+
+SPEC REPOS:
+  trunk:
+    - Sparkle
+
+EXTERNAL SOURCES:
+  auto_updater_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/auto_updater_macos/macos
+  FlutterMacOS:
+    :path: Flutter/ephemeral
+  package_info_plus:
+    :path: Flutter/ephemeral/.symlinks/plugins/package_info_plus/macos
+  url_launcher_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos
+
+SPEC CHECKSUMS:
+  auto_updater_macos: 3a42f1a06be6981f1a18be37e6e7bf86aa732118
+  FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
+  package_info_plus: f0052d280d17aa382b932f399edf32507174e870
+  Sparkle: b8c9cf4ced217ffc708a1ca5f988a7ba877658db
+  url_launcher_macos: f87a979182d112f911de6820aefddaf56ee9fbfd
+
+PODFILE CHECKSUM: 1b29b575031b812e1e7a7cf698aec84e8b2cab1e
+
+COCOAPODS: 1.17.0
