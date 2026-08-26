@@ -1,7 +1,7 @@
 import 'package:best_todo_list/app/app_controller.dart';
 import 'package:best_todo_list/app/app_theme.dart';
+import 'package:best_todo_list/app/node_persistence_workspace.dart';
 import 'package:best_todo_list/domain/node_repository.dart';
-import 'package:best_todo_list/domain/node_service.dart';
 import 'package:best_todo_list/domain/todo_node.dart';
 import 'package:best_todo_list/ui/events/event_card_task_interaction.dart';
 import 'package:flutter/gestures.dart';
@@ -386,7 +386,7 @@ class _InteractionFixture {
   }) async {
     var id = 0;
     final controller = AppController(
-      NodeService(
+      NodePersistenceWorkspace(
         repository ?? MemoryNodeRepository(),
         clock: () => DateTime.utc(2026, 8, 25, 9),
         idGenerator: () => '$idPrefix-${++id}',

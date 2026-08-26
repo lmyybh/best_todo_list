@@ -1,37 +1,37 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../domain/deadline.dart';
-import '../domain/node_service.dart';
 import '../domain/node_tree.dart';
 import '../domain/timeline.dart';
 import '../domain/todo_node.dart';
+import 'node_persistence_workspace.dart';
 import 'node_write_result.dart';
 
 enum AppView { events, timeline }
 
 class AppController extends ChangeNotifier {
-  AppController(this.service, {DateTime Function()? clock})
+  AppController(this._workspace, {DateTime Function()? clock})
     : _clock = clock ?? DateTime.now {
     _timeline = TimelineExperience(_clock());
-    _writer = NodeWriter(service);
   }
 
-  final NodeService service;
+  final NodePersistenceWorkspace _workspace;
   final DateTime Function() _clock;
   late final TimelineExperience _timeline;
-  late final NodeWriter _writer;
-  List<TodoNode> _nodes = const <TodoNode>[];
   String? _selectedId;
   bool _loading = true;
   Object? _error;
   DeletedSubtree? _lastDeletion;
   bool _eventDetailOpen = false;
+  bool _disposed = false;
 
   AppView view = AppView.events;
   final Set<String> expandedIds = <String>{};
 
-  List<TodoNode> get nodes => List<TodoNode>.unmodifiable(_nodes);
-  NodeTree get tree => NodeTree(_nodes);
+  List<TodoNode> get nodes => _workspace.nodes;
+  NodeTree get tree => _workspace.tree;
   bool get loading => _loading;
   Object? get error => _error;
   String? get selectedId => _selectedId;
@@ -50,14 +50,17 @@ class AppController extends ChangeNotifier {
     _loading = true;
     notifyListeners();
     try {
-      _nodes = await service.loadNodes();
+      await _workspace.load();
+      if (_disposed) return;
       _chooseSelection();
       _error = null;
     } catch (error) {
-      _error = error;
+      if (!_disposed) _error = error;
     } finally {
-      _loading = false;
-      notifyListeners();
+      if (!_disposed) {
+        _loading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -113,11 +116,7 @@ class AppController extends ChangeNotifier {
     Deadline? deadline,
     bool selectCreated = true,
   }) => _write(
-    () => service.createNode(
-      parentId: parentId,
-      title: title,
-      deadline: deadline,
-    ),
+    _workspace.createNode(parentId: parentId, title: title, deadline: deadline),
     onSuccess: (node) {
       if (parentId != null) expandedIds.add(parentId);
       if (selectCreated) {
@@ -128,21 +127,21 @@ class AppController extends ChangeNotifier {
   );
 
   Future<NodeWriteResult<void>> updateTitle(String nodeId, String title) =>
-      _write(() => service.updateTitle(nodeId, title));
+      _write(_workspace.updateTitle(nodeId, title));
 
   Future<NodeWriteResult<void>> updateNotes(String nodeId, String notes) =>
-      _write(() => service.updateNotes(nodeId, notes));
+      _write(_workspace.updateNotes(nodeId, notes));
 
   Future<NodeWriteResult<void>> updateDeadline(
     String nodeId,
     Deadline? deadline,
-  ) => _write(() => service.updateDeadline(nodeId, deadline));
+  ) => _write(_workspace.updateDeadline(nodeId, deadline));
 
   Future<NodeWriteResult<void>> setCompleted(String nodeId, bool completed) =>
-      _write(() => service.setLeafCompleted(nodeId, completed));
+      _write(_workspace.setLeafCompleted(nodeId, completed));
 
   Future<NodeWriteResult<DeletedSubtree>> delete(String nodeId) => _write(
-    () => service.deleteSubtree(nodeId),
+    _workspace.deleteSubtree(nodeId),
     onSuccess: (deletion) {
       _lastDeletion = deletion;
       if (_selectedId == nodeId ||
@@ -152,26 +151,28 @@ class AppController extends ChangeNotifier {
     },
   );
 
-  Future<NodeWriteResult<void>> undoDelete() => _write(
-    () async {
-      final deletion = _lastDeletion;
-      if (deletion == null) return;
-      await service.restoreSubtree(deletion);
-    },
-    onSuccess: (_) {
-      final deletion = _lastDeletion;
-      if (deletion == null) return;
-      _selectedId = deletion.nodes.first.id;
-      _lastDeletion = null;
-    },
-  );
+  Future<NodeWriteResult<void>> undoDelete() {
+    final deletion = _lastDeletion;
+    if (deletion == null) {
+      return Future<NodeWriteResult<void>>.value(
+        NodeWriteSuccess<void>(null, _workspace.nodes),
+      );
+    }
+    return _write(
+      _workspace.restoreSubtree(deletion),
+      onSuccess: (_) {
+        _selectedId = deletion.nodes.first.id;
+        _lastDeletion = null;
+      },
+    );
+  }
 
   Future<NodeWriteResult<void>> move({
     required String nodeId,
     String? newParentId,
     int? newIndex,
   }) => _write(
-    () => service.moveNode(
+    _workspace.moveNode(
       nodeId: nodeId,
       newParentId: newParentId,
       newIndex: newIndex,
@@ -181,7 +182,7 @@ class AppController extends ChangeNotifier {
   Future<NodeWriteResult<void>> reorderChildren(
     String? parentId,
     List<String> ids,
-  ) => _write(() => service.reorderChildren(parentId, ids));
+  ) => _write(_workspace.reorderChildren(parentId, ids));
 
   void clearError() {
     _error = null;
@@ -189,16 +190,15 @@ class AppController extends ChangeNotifier {
   }
 
   Future<NodeWriteResult<T>> _write<T>(
-    Future<T> Function() operation, {
+    Future<NodeWriteResult<T>> operation, {
     void Function(T value)? onSuccess,
   }) async {
-    final result = await _writer.execute(operation, (value, nodes) {
-      _nodes = nodes;
-      onSuccess?.call(value);
-      _chooseSelection();
-    });
+    final result = await operation;
+    if (_disposed) return result;
     switch (result) {
-      case NodeWriteSuccess<T>():
+      case NodeWriteSuccess<T>(:final value):
+        onSuccess?.call(value);
+        _chooseSelection();
         _error = null;
       case NodeWriteFailure<T>(:final error):
         _error = error;
@@ -209,16 +209,17 @@ class AppController extends ChangeNotifier {
 
   void _chooseSelection() {
     final currentStillExists =
-        _selectedId != null && _nodes.any((node) => node.id == _selectedId);
+        _selectedId != null && nodes.any((node) => node.id == _selectedId);
     if (currentStillExists) return;
-    final roots = NodeTree(_nodes).childrenOf(null);
+    final roots = tree.childrenOf(null);
     _selectedId = roots.isEmpty ? null : roots.first.id;
     if (_selectedId != null) expandedIds.add(_selectedId!);
   }
 
   @override
   void dispose() {
-    service.repository.close();
+    _disposed = true;
+    unawaited(_workspace.close());
     super.dispose();
   }
 }

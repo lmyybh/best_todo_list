@@ -1,7 +1,7 @@
 import 'package:best_todo_list/app/app.dart';
 import 'package:best_todo_list/app/app_controller.dart';
+import 'package:best_todo_list/app/node_persistence_workspace.dart';
 import 'package:best_todo_list/domain/deadline.dart';
-import 'package:best_todo_list/domain/node_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,7 +12,7 @@ void main() {
   testWidgets('时间线支持连续日期跨周更晚和回到今天', (tester) async {
     var id = 0;
     final controller = AppController(
-      NodeService(
+      NodePersistenceWorkspace(
         MemoryNodeRepository(),
         clock: () => DateTime.utc(2026, 8, 13, 9),
         idGenerator: () => 'timeline-${++id}',

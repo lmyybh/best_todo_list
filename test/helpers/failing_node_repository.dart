@@ -14,12 +14,13 @@ class FailingNodeRepository implements NodeRepository {
   Future<void> close() => _delegate.close();
 
   @override
-  Future<void> insertNode(TodoNode node) {
-    if (failNextInsert) {
+  Future<void> saveNodesAtomically(List<TodoNode> nodes) {
+    if (failNextInsert || failNextUpdate) {
       failNextInsert = false;
-      throw StateError('insert failed');
+      failNextUpdate = false;
+      throw StateError('save failed');
     }
-    return _delegate.insertNode(node);
+    return _delegate.saveNodesAtomically(nodes);
   }
 
   @override
@@ -31,17 +32,4 @@ class FailingNodeRepository implements NodeRepository {
     }
     return _delegate.loadNodes(includeDeleted: includeDeleted);
   }
-
-  @override
-  Future<void> updateNode(TodoNode node) {
-    if (failNextUpdate) {
-      failNextUpdate = false;
-      throw StateError('update failed');
-    }
-    return _delegate.updateNode(node);
-  }
-
-  @override
-  Future<void> updateNodes(List<TodoNode> nodes) =>
-      _delegate.updateNodes(nodes);
 }

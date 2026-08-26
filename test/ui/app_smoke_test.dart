@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:best_todo_list/app/app.dart';
 import 'package:best_todo_list/app/app_controller.dart';
 import 'package:best_todo_list/app/app_theme.dart';
+import 'package:best_todo_list/app/node_persistence_workspace.dart';
 import 'package:best_todo_list/domain/deadline.dart';
 import 'package:best_todo_list/domain/node_tree.dart';
-import 'package:best_todo_list/domain/node_service.dart';
 import 'package:best_todo_list/domain/todo_node.dart';
 import 'package:best_todo_list/ui/common/create_node_dialog.dart';
 import 'package:best_todo_list/ui/common/deadline_dialog.dart';
@@ -30,7 +30,7 @@ void main() {
     repository = FailingNodeRepository();
     appNow = DateTime(2026, 8, 11, 9);
     controller = AppController(
-      NodeService(
+      NodePersistenceWorkspace(
         repository,
         clock: () => DateTime.utc(2026, 8, 11, 9),
         idGenerator: () => 'node-${++id}',

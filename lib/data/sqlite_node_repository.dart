@@ -19,21 +19,7 @@ class SqliteNodeRepository implements NodeRepository {
   }
 
   @override
-  Future<void> insertNode(TodoNode node) =>
-      database.insert('nodes', node.toMap());
-
-  @override
-  Future<void> updateNode(TodoNode node) async {
-    await database.update(
-      'nodes',
-      node.toMap(),
-      where: 'id = ?',
-      whereArgs: <Object?>[node.id],
-    );
-  }
-
-  @override
-  Future<void> updateNodes(List<TodoNode> nodes) async {
+  Future<void> saveNodesAtomically(List<TodoNode> nodes) async {
     await database.transaction((transaction) async {
       for (final node in nodes) {
         final updated = await transaction.update(

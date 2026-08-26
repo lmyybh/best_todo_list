@@ -9,8 +9,8 @@ void main() {
   test('草稿提交失败时保留输入并阻止切换到重命名', () async {
     final session = EventCardEditingSession(
       create: (parentId, title) async =>
-          NodeWriteFailure<TodoNode>(StateError('create failed')),
-      rename: (nodeId, title) async => const NodeWriteSuccess<void>(null),
+          NodeWriteFailure<TodoNode>(StateError('create failed'), const []),
+      rename: (nodeId, title) async => const NodeWriteSuccess<void>(null, []),
     );
     addTearDown(session.dispose);
     final node = TodoNode(
@@ -42,8 +42,8 @@ void main() {
     );
     TodoNode? emitted;
     final session = EventCardEditingSession(
-      create: (parentId, title) async => NodeWriteSuccess(created),
-      rename: (nodeId, title) async => const NodeWriteSuccess<void>(null),
+      create: (parentId, title) async => NodeWriteSuccess(created, const []),
+      rename: (nodeId, title) async => const NodeWriteSuccess<void>(null, []),
       onCreated: (node) => emitted = node,
     );
     addTearDown(session.dispose);
@@ -75,9 +75,9 @@ void main() {
       manualOrder: 1000,
     );
     final session = EventCardEditingSession(
-      create: (parentId, title) async => NodeWriteSuccess(node),
+      create: (parentId, title) async => NodeWriteSuccess(node, const []),
       rename: (nodeId, title) async =>
-          NodeWriteFailure<void>(StateError('rename failed')),
+          NodeWriteFailure<void>(StateError('rename failed'), const []),
     );
     addTearDown(session.dispose);
 
@@ -101,8 +101,8 @@ void main() {
       manualOrder: 1000,
     );
     final session = EventCardEditingSession(
-      create: (parentId, title) async => NodeWriteSuccess(node),
-      rename: (nodeId, title) async => const NodeWriteSuccess<void>(null),
+      create: (parentId, title) async => NodeWriteSuccess(node, const []),
+      rename: (nodeId, title) async => const NodeWriteSuccess<void>(null, []),
     );
     addTearDown(session.dispose);
     await session.openRename(node);
@@ -118,7 +118,7 @@ void main() {
     var createdCount = 0;
     final session = EventCardEditingSession(
       create: (parentId, title) => completer.future,
-      rename: (nodeId, title) async => const NodeWriteSuccess<void>(null),
+      rename: (nodeId, title) async => const NodeWriteSuccess<void>(null, []),
       onCreated: (_) => createdCount += 1,
     );
     await session.openDraft('parent');
@@ -136,6 +136,7 @@ void main() {
           updatedAt: _now,
           manualOrder: 1000,
         ),
+        const [],
       ),
     );
 
@@ -155,7 +156,7 @@ void main() {
     );
     final session = EventCardEditingSession(
       create: (parentId, title) => completer.future,
-      rename: (nodeId, title) async => const NodeWriteSuccess<void>(null),
+      rename: (nodeId, title) async => const NodeWriteSuccess<void>(null, []),
     );
     addTearDown(session.dispose);
     await session.openDraft('first');
@@ -165,7 +166,7 @@ void main() {
     session.cancelDraft();
     await session.openDraft('second');
     session.updateDraft('第二个草稿');
-    completer.complete(NodeWriteSuccess(created));
+    completer.complete(NodeWriteSuccess(created, const []));
 
     expect(await finish, isFalse);
     expect(session.draftParentId, 'second');
@@ -183,7 +184,7 @@ void main() {
     );
     final session = EventCardEditingSession(
       create: (parentId, title) => completer.future,
-      rename: (nodeId, title) async => const NodeWriteSuccess<void>(null),
+      rename: (nodeId, title) async => const NodeWriteSuccess<void>(null, []),
     );
     addTearDown(session.dispose);
     await session.openDraft('first');
@@ -203,6 +204,7 @@ void main() {
           updatedAt: _now,
           manualOrder: 2000,
         ),
+        const [],
       ),
     );
 

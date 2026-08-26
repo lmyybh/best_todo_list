@@ -3,9 +3,22 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import '../domain/deadline.dart';
+class UnsupportedDatabaseVersion implements Exception {
+  const UnsupportedDatabaseVersion({
+    required this.found,
+    required this.supported,
+  });
+
+  final int found;
+  final int supported;
+
+  @override
+  String toString() => '不支持数据库版本 $found；当前仅支持版本 $supported，原数据库未修改。';
+}
 
 class AppDatabase {
+  static const int currentVersion = 4;
+
   static Future<Database> open({String? path}) async {
     sqfliteFfiInit();
     final factory = databaseFactoryFfi;
@@ -13,7 +26,7 @@ class AppDatabase {
     return factory.openDatabase(
       databasePath,
       options: OpenDatabaseOptions(
-        version: 4,
+        version: currentVersion,
         onConfigure: (database) async {
           await database.execute('PRAGMA foreign_keys = ON');
         },
@@ -21,24 +34,11 @@ class AppDatabase {
           await _createNodesTable(database);
           await _createNodeIndexes(database);
         },
-        onUpgrade: (database, oldVersion, newVersion) async {
-          if (oldVersion < 2) {
-            await database.execute(
-              "ALTER TABLE nodes ADD COLUMN notes TEXT NOT NULL DEFAULT ''",
-            );
-          }
-          if (oldVersion < 3) {
-            await database.execute(
-              'ALTER TABLE nodes ADD COLUMN deadline_has_time INTEGER NOT NULL DEFAULT 0',
-            );
-            await database.execute(
-              'UPDATE nodes SET deadline_has_time = 1 WHERE deadline IS NOT NULL',
-            );
-          }
-          if (oldVersion < 4) {
-            await _migrateDeadlinesToVersion4(database);
-          }
-        },
+        onUpgrade: (_, oldVersion, newVersion) =>
+            throw UnsupportedDatabaseVersion(
+              found: oldVersion,
+              supported: newVersion,
+            ),
       ),
     );
   }
@@ -123,40 +123,4 @@ Future<void> _createNodeIndexes(DatabaseExecutor database) async {
   await database.execute(
     'CREATE INDEX nodes_created_idx ON nodes(created_at, deleted_at)',
   );
-}
-
-Future<void> _migrateDeadlinesToVersion4(Database database) async {
-  await database.execute('ALTER TABLE nodes RENAME TO nodes_v3');
-  await _createNodesTable(database);
-
-  final rows = await database.query(
-    'nodes_v3',
-    orderBy: 'created_at ASC, id ASC',
-  );
-  for (final row in rows) {
-    final migrated = Map<String, Object?>.of(row);
-    final deadline = migrated.remove('deadline') as int?;
-    final hasTime = (migrated.remove('deadline_has_time') as int? ?? 0) == 1;
-    String? deadlineDate;
-    int? deadlineAt;
-    if (deadline != null && hasTime) {
-      deadlineAt = deadline;
-    } else if (deadline != null) {
-      final local = DateTime.fromMillisecondsSinceEpoch(
-        deadline,
-        isUtc: true,
-      ).toLocal();
-      deadlineDate = DateOnlyDeadline(
-        year: local.year,
-        month: local.month,
-        day: local.day,
-      ).storage.date;
-    }
-    migrated['deadline_date'] = deadlineDate;
-    migrated['deadline_at'] = deadlineAt;
-    await database.insert('nodes', migrated);
-  }
-
-  await database.execute('DROP TABLE nodes_v3');
-  await _createNodeIndexes(database);
 }

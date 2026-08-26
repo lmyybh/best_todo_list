@@ -1,6 +1,6 @@
 import 'package:best_todo_list/app/app.dart';
 import 'package:best_todo_list/app/app_controller.dart';
-import 'package:best_todo_list/domain/node_service.dart';
+import 'package:best_todo_list/app/node_persistence_workspace.dart';
 import 'package:best_todo_list/ui/events/event_board_view.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -14,7 +14,7 @@ void main() {
   testWidgets('事件卡片随桌面宽度分列并在同行保持等高', (tester) async {
     var id = 0;
     final controller = AppController(
-      NodeService(
+      NodePersistenceWorkspace(
         MemoryNodeRepository(),
         clock: () => DateTime.utc(2026, 8, 13, 9),
         idGenerator: () => 'node-${++id}',
@@ -252,7 +252,7 @@ void main() {
   testWidgets('事件总览进入详情修改后可以返回并同步状态', (tester) async {
     var id = 0;
     final controller = AppController(
-      NodeService(
+      NodePersistenceWorkspace(
         MemoryNodeRepository(),
         clock: () => DateTime.utc(2026, 8, 13, 9),
         idGenerator: () => 'detail-${++id}',
@@ -315,7 +315,7 @@ void main() {
   testWidgets('事件拖动支持边缘滚动、Esc 取消和键盘排序', (tester) async {
     var id = 0;
     final controller = AppController(
-      NodeService(
+      NodePersistenceWorkspace(
         MemoryNodeRepository(),
         clock: () => DateTime.utc(2026, 8, 13, 9),
         idGenerator: () => 'drag-a11y-${++id}',
@@ -381,7 +381,7 @@ void main() {
   testWidgets('事件卡片内输入不会改变事件面板滚动位置', (tester) async {
     var id = 0;
     final controller = AppController(
-      NodeService(
+      NodePersistenceWorkspace(
         MemoryNodeRepository(),
         clock: () => DateTime.utc(2026, 8, 13, 9),
         idGenerator: () => 'scroll-child-${++id}',

@@ -1,5 +1,5 @@
 import 'package:best_todo_list/app/app_controller.dart';
-import 'package:best_todo_list/domain/node_service.dart';
+import 'package:best_todo_list/app/node_persistence_workspace.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/memory_node_repository.dart';
@@ -8,7 +8,7 @@ void main() {
   test('日期窗口切换并可回到今天', () async {
     var now = DateTime(2026, 8, 13, 9);
     final controller = AppController(
-      NodeService(MemoryNodeRepository()),
+      NodePersistenceWorkspace(MemoryNodeRepository()),
       clock: () => now,
     );
     await controller.load();
@@ -34,7 +34,7 @@ void main() {
   test('主动浏览其他周时跨天刷新不覆盖用户选择', () async {
     var now = DateTime(2026, 12, 31, 23, 59);
     final controller = AppController(
-      NodeService(MemoryNodeRepository()),
+      NodePersistenceWorkspace(MemoryNodeRepository()),
       clock: () => now,
     );
     await controller.load();

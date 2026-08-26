@@ -29,8 +29,12 @@ _Avoid_: 完整周、七天窗口
 ## 节点写入
 
 **节点写入结果 (Node Write Result)**:
-一次节点变更及其后数据重载的整体结果，明确分为成功与失败。
+一次节点变更及其原子持久化的整体结果，明确分为成功与失败。
 _Avoid_: nullable 成功值、通过全局 error 猜测结果
+
+**节点持久化工作区 (Node Persistence Workspace)**:
+维护 Todo 事件树的已持久化快照，并以原子方式应用节点变更。
+_Avoid_: Repository 缓存、数据库会话
 
 ## 桌面更新与发布
 
