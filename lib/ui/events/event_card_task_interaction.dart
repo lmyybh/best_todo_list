@@ -10,6 +10,7 @@ import '../../domain/node_tree.dart';
 import '../../domain/todo_node.dart';
 import '../common/delete_node.dart';
 import '../common/formatters.dart';
+import 'event_card_editing_session.dart';
 
 const int _maximumPreviewDepth = 2;
 
@@ -36,6 +37,7 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
   final TextEditingController inlineRenameController = TextEditingController();
   final GlobalKey inlineDraftKey = GlobalKey();
   final GlobalKey treeViewportKey = GlobalKey();
+  late final EventCardEditingSession editingSession;
   late final FocusNode inlineDraftFocusNode = FocusNode(
     debugLabel: 'event-inline-task-draft',
   )..addListener(_handleInlineDraftFocusChange);
@@ -44,16 +46,30 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
   )..addListener(_handleInlineRenameFocusChange);
   Timer? highlightTimer;
   String? highlightedId;
-  String? inlineDraftParentId;
-  String? inlineRenameNodeId;
-  String? inlineRenameOriginalTitle;
-  bool inlineDraftSubmitting = false;
-  bool inlineRenameSubmitting = false;
-  bool inlineRenameFailed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    editingSession = EventCardEditingSession(
+      create: (parentId, title) => widget.controller.create(
+        parentId: parentId,
+        title: title,
+        selectCreated: false,
+      ),
+      rename: (nodeId, title) => widget.controller.updateTitle(nodeId, title),
+      onCreated: (node) => highlightCreated(node.id),
+    )..addListener(_handleEditingChanged);
+  }
+
+  void _handleEditingChanged() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
     highlightTimer?.cancel();
+    editingSession.removeListener(_handleEditingChanged);
+    editingSession.dispose();
     inlineDraftFocusNode.removeListener(_handleInlineDraftFocusChange);
     inlineDraftFocusNode.dispose();
     inlineDraftController.dispose();
@@ -66,37 +82,34 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
 
   void _handleInlineDraftFocusChange() {
     if (inlineDraftFocusNode.hasFocus ||
-        inlineDraftParentId == null ||
-        inlineDraftSubmitting) {
+        editingSession.draftParentId == null ||
+        editingSession.draftSubmitting) {
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted &&
           !inlineDraftFocusNode.hasFocus &&
-          inlineDraftParentId != null &&
-          !inlineDraftSubmitting) {
+          editingSession.draftParentId != null &&
+          !editingSession.draftSubmitting) {
         unawaited(_finishInlineDraft());
       }
     });
   }
 
   Future<void> _openInlineDraft(String parentId) async {
-    if (inlineDraftParentId == parentId) {
+    if (editingSession.draftParentId == parentId) {
       inlineDraftFocusNode.requestFocus();
       return;
     }
-    if (inlineRenameNodeId != null) await _finishInlineRename();
-    if (inlineRenameNodeId != null || !mounted) return;
-    if (inlineDraftParentId != null) await _finishInlineDraft();
-    if (!mounted) return;
-    inlineDraftController.clear();
+    _syncEditingText();
+    if (!await editingSession.openDraft(parentId) || !mounted) return;
+    inlineDraftController.text = editingSession.draftText;
     setState(() {
-      inlineDraftParentId = parentId;
       collapsedIds.remove(parentId);
       expandedBeyondPreviewIds.add(parentId);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || inlineDraftParentId != parentId) return;
+      if (!mounted || editingSession.draftParentId != parentId) return;
       inlineDraftFocusNode.requestFocus();
       _revealInlineDraft();
     });
@@ -137,133 +150,105 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
 
   void _revealInlineDraftAfterLayout() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && inlineDraftParentId != null) _revealInlineDraft();
+      if (mounted && editingSession.draftParentId != null) {
+        _revealInlineDraft();
+      }
     });
   }
 
   Future<void> _finishInlineDraft() async {
-    final parentId = inlineDraftParentId;
-    if (parentId == null || inlineDraftSubmitting) return;
-    final title = inlineDraftController.text.trim();
-    if (title.isEmpty) {
-      _closeInlineDraft();
-      return;
-    }
-    setState(() => inlineDraftSubmitting = true);
-    final result = await widget.controller.create(
-      parentId: parentId,
-      title: title,
-      selectCreated: false,
-    );
+    editingSession.updateDraft(inlineDraftController.text);
+    final finished = await editingSession.finishDraft();
     if (!mounted) return;
-    if (result case NodeWriteFailure()) {
-      setState(() => inlineDraftSubmitting = false);
-      inlineDraftFocusNode.requestFocus();
+    if (!finished) {
+      if (editingSession.draftParentId != null) {
+        inlineDraftFocusNode.requestFocus();
+      }
       return;
     }
-    final created = (result as NodeWriteSuccess<TodoNode>).value;
-    highlightCreated(created.id);
-    _closeInlineDraft();
+    inlineDraftController.clear();
+    inlineDraftFocusNode.unfocus();
   }
 
   void _closeInlineDraft() {
-    if (inlineDraftParentId == null) return;
+    if (editingSession.draftParentId == null) return;
+    editingSession.cancelDraft();
     inlineDraftController.clear();
-    setState(() {
-      inlineDraftParentId = null;
-      inlineDraftSubmitting = false;
-    });
     inlineDraftFocusNode.unfocus();
   }
 
   void _handleInlineRenameFocusChange() {
     if (inlineRenameFocusNode.hasFocus ||
-        inlineRenameNodeId == null ||
-        inlineRenameSubmitting) {
+        editingSession.renameNodeId == null ||
+        editingSession.renameSubmitting) {
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted &&
           !inlineRenameFocusNode.hasFocus &&
-          inlineRenameNodeId != null &&
-          !inlineRenameSubmitting) {
+          editingSession.renameNodeId != null &&
+          !editingSession.renameSubmitting) {
         unawaited(_finishInlineRename());
       }
     });
   }
 
   Future<void> _openInlineRename(TodoNode node) async {
-    if (inlineRenameNodeId == node.id) {
+    if (editingSession.renameNodeId == node.id) {
       inlineRenameFocusNode.requestFocus();
       return;
     }
-    if (inlineDraftParentId != null) await _finishInlineDraft();
-    if (inlineDraftParentId != null || !mounted) return;
-    if (inlineRenameNodeId != null) await _finishInlineRename();
-    if (inlineRenameNodeId != null || !mounted) return;
-    inlineRenameController.text = node.title;
+    _syncEditingText();
+    if (!await editingSession.openRename(node) || !mounted) return;
+    inlineDraftController.clear();
+    inlineRenameController.text = editingSession.renameText;
     inlineRenameController.selection = TextSelection(
       baseOffset: 0,
-      extentOffset: node.title.length,
+      extentOffset: editingSession.renameText.length,
     );
-    setState(() {
-      inlineRenameNodeId = node.id;
-      inlineRenameOriginalTitle = node.title;
-      inlineRenameFailed = false;
-    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && inlineRenameNodeId == node.id) {
+      if (mounted && editingSession.renameNodeId == node.id) {
         inlineRenameFocusNode.requestFocus();
       }
     });
   }
 
   Future<void> _finishInlineRename() async {
-    final nodeId = inlineRenameNodeId;
-    final originalTitle = inlineRenameOriginalTitle;
-    if (nodeId == null || originalTitle == null || inlineRenameSubmitting) {
-      return;
-    }
-    final title = inlineRenameController.text.trim();
-    if (title.isEmpty || title == originalTitle) {
-      _closeInlineRename();
-      return;
-    }
-    setState(() {
-      inlineRenameSubmitting = true;
-      inlineRenameFailed = false;
-    });
-    final result = await widget.controller.updateTitle(nodeId, title);
+    editingSession.updateRename(inlineRenameController.text);
+    final finished = await editingSession.finishRename();
     if (!mounted) return;
-    if (result case NodeWriteFailure()) {
-      setState(() {
-        inlineRenameSubmitting = false;
-        inlineRenameFailed = true;
-      });
-      inlineRenameFocusNode.requestFocus();
+    if (!finished) {
+      if (editingSession.renameNodeId != null) {
+        inlineRenameFocusNode.requestFocus();
+      }
       return;
     }
-    _closeInlineRename();
+    inlineRenameController.clear();
+    inlineRenameFocusNode.unfocus();
   }
 
   void _closeInlineRename() {
-    if (inlineRenameNodeId == null) return;
+    if (editingSession.renameNodeId == null) return;
+    editingSession.cancelRename();
     inlineRenameController.clear();
-    setState(() {
-      inlineRenameNodeId = null;
-      inlineRenameOriginalTitle = null;
-      inlineRenameSubmitting = false;
-      inlineRenameFailed = false;
-    });
     inlineRenameFocusNode.unfocus();
   }
 
   Future<void> _deleteTaskNode(TodoNode node) async {
-    if (inlineDraftParentId != null) await _finishInlineDraft();
-    if (inlineDraftParentId != null || !mounted) return;
-    if (inlineRenameNodeId != null) await _finishInlineRename();
-    if (inlineRenameNodeId != null || !mounted) return;
+    _syncEditingText();
+    if (!await editingSession.finishActive() || !mounted) return;
+    inlineDraftController.clear();
+    inlineRenameController.clear();
     await confirmDeleteNode(context, widget.controller, node);
+  }
+
+  void _syncEditingText() {
+    if (editingSession.draftParentId != null) {
+      editingSession.updateDraft(inlineDraftController.text);
+    }
+    if (editingSession.renameNodeId != null) {
+      editingSession.updateRename(inlineRenameController.text);
+    }
   }
 
   void highlightCreated(String nodeId) {
@@ -308,14 +293,15 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
       collapsedIds: collapsedIds,
       expandedBeyondPreviewIds: expandedBeyondPreviewIds,
       highlightedId: highlightedId,
-      inlineDraftParentId: inlineDraftParentId,
-      inlineRenameNodeId: inlineRenameNodeId,
+      inlineDraftParentId: editingSession.draftParentId,
+      inlineRenameNodeId: editingSession.renameNodeId,
       inlineDraftBuilder: (depth) => _InlineTaskDraftRow(
         key: inlineDraftKey,
         depth: depth,
         controller: inlineDraftController,
         focusNode: inlineDraftFocusNode,
-        submitting: inlineDraftSubmitting,
+        submitting: editingSession.draftSubmitting,
+        onChanged: editingSession.updateDraft,
         onSubmit: _finishInlineDraft,
         onCancel: _closeInlineDraft,
         onRevealed: _revealInlineDraftAfterLayout,
@@ -324,8 +310,9 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
         nodeId: node.id,
         controller: inlineRenameController,
         focusNode: inlineRenameFocusNode,
-        submitting: inlineRenameSubmitting,
-        failed: inlineRenameFailed,
+        submitting: editingSession.renameSubmitting,
+        failed: editingSession.renameFailed,
+        onChanged: editingSession.updateRename,
         fontWeight: tree.childrenOf(node.id).isEmpty
             ? FontWeight.w500
             : FontWeight.w600,
@@ -988,6 +975,7 @@ class _InlineTaskRenameField extends StatelessWidget {
     required this.focusNode,
     required this.submitting,
     required this.failed,
+    required this.onChanged,
     required this.fontWeight,
     required this.onSubmit,
     required this.onCancel,
@@ -998,6 +986,7 @@ class _InlineTaskRenameField extends StatelessWidget {
   final FocusNode focusNode;
   final bool submitting;
   final bool failed;
+  final ValueChanged<String> onChanged;
   final FontWeight fontWeight;
   final VoidCallback onSubmit;
   final VoidCallback onCancel;
@@ -1029,6 +1018,7 @@ class _InlineTaskRenameField extends StatelessWidget {
                     focusNode: focusNode,
                     enabled: !submitting,
                     autofocus: true,
+                    onChanged: onChanged,
                     onSubmitted: (_) => onSubmit(),
                     onTapOutside: (_) => focusNode.unfocus(),
                     textInputAction: TextInputAction.done,
@@ -1087,6 +1077,7 @@ class _InlineTaskDraftRow extends StatelessWidget {
     required this.controller,
     required this.focusNode,
     required this.submitting,
+    required this.onChanged,
     required this.onSubmit,
     required this.onCancel,
     required this.onRevealed,
@@ -1097,6 +1088,7 @@ class _InlineTaskDraftRow extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final bool submitting;
+  final ValueChanged<String> onChanged;
   final VoidCallback onSubmit;
   final VoidCallback onCancel;
   final VoidCallback onRevealed;
@@ -1163,6 +1155,7 @@ class _InlineTaskDraftRow extends StatelessWidget {
                         focusNode: focusNode,
                         enabled: !submitting,
                         autofocus: true,
+                        onChanged: onChanged,
                         onSubmitted: (_) => onSubmit(),
                         onTapOutside: (_) => focusNode.unfocus(),
                         textInputAction: TextInputAction.done,

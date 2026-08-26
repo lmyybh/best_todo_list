@@ -34,6 +34,34 @@ void main() {
     expect(find.text('新增发布检查'), findsOneWidget);
   });
 
+  testWidgets('替换控制器后重命名写入新控制器', (tester) async {
+    final first = await _InteractionFixture.create(idPrefix: 'replacement');
+    final firstTask = await first.createTask(title: '旧控制器任务');
+    await first.pump(tester);
+
+    final second = await _InteractionFixture.create(idPrefix: 'replacement');
+    final secondTask = await second.createTask(title: '新控制器任务');
+    expect(secondTask.id, firstTask.id);
+    await second.pump(tester);
+
+    final title = find.byKey(
+      ValueKey<String>('event-row-title-${secondTask.id}'),
+    );
+    await tester.tap(title);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(title);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(ValueKey<String>('event-inline-rename-${secondTask.id}')),
+      '替换后标题',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(second.controller.tree.nodes[secondTask.id]?.title, '替换后标题');
+    expect(first.controller.tree.nodes[firstTask.id]?.title, '旧控制器任务');
+  });
+
   testWidgets('可以从任务行内联创建更深层子任务', (tester) async {
     final fixture = await _InteractionFixture.create(idPrefix: 'nested');
     final child = await fixture.createTask(title: '检查发布说明');
