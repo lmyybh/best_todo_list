@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -12,6 +11,8 @@ import '../../domain/todo_node.dart';
 import '../common/create_node_dialog.dart';
 import '../common/delete_node.dart';
 import '../common/formatters.dart';
+import 'event_board_layout.dart';
+import 'event_board_reorder_session.dart';
 import 'event_card_task_interaction.dart';
 
 class EventBoardView extends StatefulWidget {
@@ -19,14 +20,15 @@ class EventBoardView extends StatefulWidget {
 
   final AppController controller;
 
-  static const double minimumCardWidth = 300;
-  static const double maximumCardWidth = 420;
-  static const double singleColumnMaximumWidth = 680;
-  static const double minimumCardHeight = 280;
-  static const double maximumCardHeight = 500;
-  static const int maximumColumns = 4;
-  static const int previewRowLimit = 5;
-  static const double spacing = 16;
+  static const double minimumCardWidth = EventBoardLayout.minimumCardWidth;
+  static const double maximumCardWidth = EventBoardLayout.maximumCardWidth;
+  static const double singleColumnMaximumWidth =
+      EventBoardLayout.singleColumnMaximumWidth;
+  static const double minimumCardHeight = EventBoardLayout.minimumCardHeight;
+  static const double maximumCardHeight = EventBoardLayout.maximumCardHeight;
+  static const double spacing = EventBoardLayout.spacing;
+  static const int maximumColumns = EventBoardLayout.maximumColumns;
+  static const int previewRowLimit = EventBoardLayout.previewRowLimit;
 
   @override
   State<EventBoardView> createState() => _EventBoardViewState();
@@ -37,16 +39,13 @@ class _EventBoardViewState extends State<EventBoardView> {
   final GlobalKey scrollViewportKey = GlobalKey();
   final ScrollController boardScrollController = ScrollController();
   final FocusNode boardFocusNode = FocusNode(debugLabel: 'event-board');
+  final EventBoardReorderSession reorderSession = EventBoardReorderSession();
   Timer? autoScrollTimer;
   Timer? responsiveReflowTimer;
   double autoScrollVelocity = 0;
   int? renderedColumns;
   bool animateResponsiveReflow = false;
-  String? draggedEventId;
-  List<String>? previewRootIds;
-  List<String>? dragStartRootIds;
   Offset? latestDragPosition;
-  bool dragCanceled = false;
 
   @override
   void dispose() {
@@ -64,7 +63,7 @@ class _EventBoardViewState extends State<EventBoardView> {
       for (final root in roots) root.id: root,
     };
     final rootIds = roots.map((root) => root.id).toList();
-    final previewIds = previewRootIds;
+    final previewIds = reorderSession.orderedIds;
     final orderedIds =
         previewIds != null &&
             previewIds.length == rootIds.length &&
@@ -77,7 +76,7 @@ class _EventBoardViewState extends State<EventBoardView> {
       onKeyEvent: (_, event) {
         if (event is KeyDownEvent &&
             event.logicalKey == LogicalKeyboardKey.escape &&
-            draggedEventId != null) {
+            reorderSession.active) {
           _cancelEventDrag();
           return KeyEventResult.handled;
         }
@@ -85,99 +84,39 @@ class _EventBoardViewState extends State<EventBoardView> {
       },
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final panelPadding = constraints.maxWidth < 640
-              ? const EdgeInsets.fromLTRB(16, 16, 16, 24)
-              : constraints.maxWidth < 1200
-              ? const EdgeInsets.fromLTRB(20, 20, 20, 28)
-              : const EdgeInsets.fromLTRB(24, 24, 24, 32);
-          final availableWidth =
-              (constraints.maxWidth - panelPadding.horizontal)
-                  .clamp(0, double.infinity)
-                  .toDouble();
-          final columns =
-              ((availableWidth + EventBoardView.spacing) /
-                      (EventBoardView.minimumCardWidth +
-                          EventBoardView.spacing))
-                  .floor()
-                  .clamp(1, EventBoardView.maximumColumns);
-          _recordRenderedColumns(columns);
+          final layout = const EventBoardLayout().project(
+            maxWidth: constraints.maxWidth,
+            maxHeight: constraints.hasBoundedHeight
+                ? constraints.maxHeight
+                : double.infinity,
+            tree: widget.controller.tree,
+            roots: orderedRoots,
+          );
+          _recordRenderedColumns(layout.columns);
           final animationsDisabled = MediaQuery.disableAnimationsOf(context);
           final layoutAnimationDuration = animationsDisabled
               ? Duration.zero
-              : draggedEventId != null
+              : reorderSession.active
               ? const Duration(milliseconds: 160)
               : animateResponsiveReflow
               ? const Duration(milliseconds: 140)
               : Duration.zero;
-          final maximumWidthForColumns = columns == 1
-              ? EventBoardView.singleColumnMaximumWidth
-              : EventBoardView.maximumCardWidth * columns +
-                    EventBoardView.spacing * (columns - 1);
-          final gridWidth = availableWidth
-              .clamp(0, maximumWidthForColumns)
-              .toDouble();
-          final resolvedWidth =
-              (gridWidth - EventBoardView.spacing * (columns - 1)) / columns;
-          final viewportHeight = constraints.hasBoundedHeight
-              ? constraints.maxHeight
-              : 800.0;
-          final minimumCardHeight = (viewportHeight * 0.36)
-              .clamp(EventBoardView.minimumCardHeight, 340)
-              .toDouble();
-          final maximumCardHeight = (viewportHeight * 0.55)
-              .clamp(360, EventBoardView.maximumCardHeight)
-              .toDouble();
-
           final items = <TodoNode?>[...orderedRoots, null];
-          final rowHeights = <double>[];
-          for (var start = 0; start < items.length; start += columns) {
-            final row = items.sublist(
-              start,
-              (start + columns).clamp(0, items.length),
-            );
-            rowHeights.add(
-              row.whereType<TodoNode>().fold<double>(
-                minimumCardHeight,
-                (height, node) =>
-                    height >
-                        _preferredCardHeight(
-                          widget.controller.tree,
-                          node,
-                          minimumHeight: minimumCardHeight,
-                          maximumHeight: maximumCardHeight,
-                        )
-                    ? height
-                    : _preferredCardHeight(
-                        widget.controller.tree,
-                        node,
-                        minimumHeight: minimumCardHeight,
-                        maximumHeight: maximumCardHeight,
-                      ),
-              ),
-            );
-          }
-          final rowOffsets = <double>[];
-          var totalHeight = 0.0;
-          for (final height in rowHeights) {
-            rowOffsets.add(totalHeight);
-            totalHeight += height + EventBoardView.spacing;
-          }
-          if (rowHeights.isNotEmpty) totalHeight -= EventBoardView.spacing;
 
           return KeyedSubtree(
             key: const ValueKey<String>('event-board-scroll'),
             child: SingleChildScrollView(
               key: scrollViewportKey,
               controller: boardScrollController,
-              padding: panelPadding,
+              padding: layout.padding,
               child: roots.isEmpty
                   ? _EmptyBoard(onCreate: () => _createEvent(context))
                   : Align(
                       alignment: Alignment.topCenter,
                       child: SizedBox(
                         key: const ValueKey<String>('event-board-wrap'),
-                        width: gridWidth,
-                        height: totalHeight,
+                        width: layout.gridWidth,
+                        height: layout.totalHeight,
                         child: Stack(
                           key: boardKey,
                           children: <Widget>[
@@ -187,14 +126,12 @@ class _EventBoardViewState extends State<EventBoardView> {
                                 item: items[index],
                                 allRoots: roots,
                                 index: index,
-                                columns: columns,
-                                width: resolvedWidth,
-                                height: rowHeights[index ~/ columns],
+                                columns: layout.columns,
+                                width: layout.cardWidth,
+                                height: layout.heightAt(index),
                                 animationDuration: layoutAnimationDuration,
-                                left:
-                                    (index % columns) *
-                                    (resolvedWidth + EventBoardView.spacing),
-                                top: rowOffsets[index ~/ columns],
+                                left: layout.leftAt(index),
+                                top: layout.topAt(index),
                               ),
                           ],
                         ),
@@ -295,75 +232,46 @@ class _EventBoardViewState extends State<EventBoardView> {
   void _startDragging(String id, List<TodoNode> roots) {
     boardFocusNode.requestFocus();
     setState(() {
-      draggedEventId = id;
-      dragStartRootIds = roots.map((root) => root.id).toList();
-      previewRootIds = List<String>.of(dragStartRootIds!);
+      reorderSession.start(id, roots.map((root) => root.id).toList());
       latestDragPosition = null;
-      dragCanceled = false;
     });
   }
 
   void _previewAround(String targetId, {required bool after}) {
-    final draggedId = draggedEventId;
-    final current = previewRootIds;
-    if (draggedId == null || current == null || draggedId == targetId) return;
-    final next = List<String>.of(current)..remove(draggedId);
-    final targetIndex = next.indexOf(targetId);
-    if (targetIndex < 0) return;
-    next.insert(targetIndex + (after ? 1 : 0), draggedId);
-    if (!listEquals(next, current)) setState(() => previewRootIds = next);
+    if (reorderSession.previewAround(targetId, after: after)) {
+      setState(() {});
+    }
   }
 
   void _previewAtEnd() {
-    final draggedId = draggedEventId;
-    final current = previewRootIds;
-    if (draggedId == null || current == null) return;
-    final next = List<String>.of(current)
-      ..remove(draggedId)
-      ..add(draggedId);
-    if (!listEquals(next, current)) setState(() => previewRootIds = next);
-  }
-
-  void _commitPreviewOrder() {
-    final orderedIds = previewRootIds;
-    if (!dragCanceled && orderedIds != null) {
-      unawaited(widget.controller.reorderChildren(null, orderedIds));
+    if (reorderSession.previewAtEnd()) {
+      setState(() {});
     }
-    _clearDragging();
   }
 
   void _endDragging(DraggableDetails details) {
-    if (draggedEventId == null) return;
-    final previewChanged =
-        previewRootIds != null &&
-        dragStartRootIds != null &&
-        !listEquals(previewRootIds, dragStartRootIds);
-    if (!dragCanceled && previewChanged && _isInsideBoard(latestDragPosition)) {
-      _commitPreviewOrder();
-    } else {
-      _clearDragging();
+    if (!reorderSession.active) return;
+    final orderedIds = reorderSession.finish(
+      droppedInside: _isInsideBoard(latestDragPosition),
+    );
+    if (orderedIds != null) {
+      unawaited(widget.controller.reorderChildren(null, orderedIds));
     }
+    _finishDragPresentation();
   }
 
-  void _clearDragging() {
+  void _finishDragPresentation() {
     _stopEventAutoScroll();
     if (!mounted) return;
     setState(() {
-      draggedEventId = null;
-      previewRootIds = null;
-      dragStartRootIds = null;
       latestDragPosition = null;
-      dragCanceled = false;
     });
   }
 
   void _cancelEventDrag() {
     _stopEventAutoScroll();
     setState(() {
-      dragCanceled = true;
-      previewRootIds = dragStartRootIds == null
-          ? null
-          : List<String>.of(dragStartRootIds!);
+      reorderSession.cancel();
     });
   }
 
@@ -421,16 +329,15 @@ class _EventBoardViewState extends State<EventBoardView> {
     List<TodoNode> roots,
   ) {
     final orderedIds = roots.map((root) => root.id).toList();
-    final oldIndex = orderedIds.indexOf(id);
-    if (oldIndex < 0) return;
-    final newIndex = toEdge
-        ? (direction < 0 ? 0 : orderedIds.length - 1)
-        : (oldIndex + direction).clamp(0, orderedIds.length - 1);
-    if (newIndex == oldIndex) return;
-    orderedIds
-      ..removeAt(oldIndex)
-      ..insert(newIndex, id);
-    unawaited(widget.controller.reorderChildren(null, orderedIds));
+    final reordered = reorderSession.reorderFromKeyboard(
+      id: id,
+      direction: direction,
+      toEdge: toEdge,
+      orderedIds: orderedIds,
+    );
+    if (reordered != null) {
+      unawaited(widget.controller.reorderChildren(null, reordered));
+    }
   }
 
   Future<void> _createEvent(BuildContext context) async {
@@ -449,22 +356,6 @@ class _EventBoardViewState extends State<EventBoardView> {
       ),
     );
   }
-}
-
-double _preferredCardHeight(
-  NodeTree tree,
-  TodoNode node, {
-  required double minimumHeight,
-  required double maximumHeight,
-}) {
-  final visibleRows = tree
-      .descendantsOf(node.id)
-      .length
-      .clamp(0, EventBoardView.previewRowLimit);
-  final hidden = tree.descendantsOf(node.id).length > visibleRows;
-  return (225 + visibleRows * 36 + (hidden ? 28 : 0))
-      .clamp(minimumHeight, maximumHeight)
-      .toDouble();
 }
 
 const _eventColors = <Color>[
