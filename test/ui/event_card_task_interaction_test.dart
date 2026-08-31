@@ -133,6 +133,117 @@ void main() {
     );
   });
 
+  testWidgets('卡片触及边界后下一次独立滚动才接力事件页面', (tester) async {
+    final fixture = await _InteractionFixture.create(
+      idPrefix: 'scroll-handoff',
+    );
+    for (var index = 0; index < 12; index++) {
+      await fixture.createTask(title: '任务 $index');
+    }
+    final pageScrollController = ScrollController();
+    addTearDown(pageScrollController.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            controller: pageScrollController,
+            child: Column(
+              children: <Widget>[
+                SizedBox(
+                  width: 420,
+                  height: 260,
+                  child: EventCardTaskInteraction(
+                    controller: fixture.controller,
+                    rootEventId: fixture.root.id,
+                  ),
+                ),
+                const SizedBox(height: 600),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final taskScroll = find.byKey(
+      ValueKey<String>('event-tree-scroll-${fixture.root.id}'),
+    );
+    final taskScrollable = tester.state<ScrollableState>(
+      find.descendant(of: taskScroll, matching: find.byType(Scrollable)).first,
+    );
+    final scrollPosition = tester.getCenter(taskScroll);
+
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: scrollPosition,
+        scrollDelta: const Offset(0, 10000),
+      ),
+    );
+    await tester.pump();
+    expect(
+      taskScrollable.position.pixels,
+      taskScrollable.position.maxScrollExtent,
+    );
+    expect(pageScrollController.offset, 0);
+
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: scrollPosition,
+        scrollDelta: const Offset(0, 80),
+      ),
+    );
+    await tester.pump();
+    expect(pageScrollController.offset, 0);
+
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: scrollPosition,
+        scrollDelta: const Offset(0, 80),
+      ),
+    );
+    await tester.pump();
+    expect(pageScrollController.offset, greaterThan(0));
+
+    pageScrollController.jumpTo(80);
+    taskScrollable.position.jumpTo(taskScrollable.position.maxScrollExtent);
+    await tester.pump();
+    final upperScrollPosition = tester.getCenter(taskScroll);
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: upperScrollPosition,
+        scrollDelta: const Offset(0, -10000),
+      ),
+    );
+    await tester.pump();
+    expect(
+      taskScrollable.position.pixels,
+      taskScrollable.position.minScrollExtent,
+    );
+    expect(pageScrollController.offset, 80);
+
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: upperScrollPosition,
+        scrollDelta: const Offset(0, -80),
+      ),
+    );
+    await tester.pump();
+    expect(pageScrollController.offset, 80);
+
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: upperScrollPosition,
+        scrollDelta: const Offset(0, -80),
+      ),
+    );
+    await tester.pump();
+    expect(pageScrollController.offset, lessThan(80));
+  });
+
   testWidgets('重命名写入失败时保留输入和焦点以便重试', (tester) async {
     final repository = FailingNodeRepository();
     final fixture = await _InteractionFixture.create(
@@ -193,7 +304,7 @@ void main() {
     expect(fixture.controller.error, isNotNull);
   });
 
-  testWidgets('默认预览三级任务结构', (tester) async {
+  testWidgets('默认预览三级任务结构并可继续展开', (tester) async {
     final fixture = await _InteractionFixture.create(idPrefix: 'depth');
     final first = await fixture.createTask(title: '准备阶段');
     final second = await fixture.createTask(parentId: first.id, title: '内容检查');
@@ -211,12 +322,20 @@ void main() {
     );
     expect(
       find.byKey(ValueKey<String>('event-expand-${third.id}')),
-      findsNothing,
+      findsOneWidget,
     );
     expect(
       find.byKey(ValueKey<String>('event-expand-${second.id}')),
       findsOneWidget,
     );
+
+    await tester.tap(find.byKey(ValueKey<String>('event-expand-${third.id}')));
+    await tester.pumpAndSettle();
+    expect(find.text('复核标点'), findsOneWidget);
+
+    await tester.tap(find.byKey(ValueKey<String>('event-expand-${third.id}')));
+    await tester.pumpAndSettle();
+    expect(find.text('复核标点'), findsNothing);
   });
 
   testWidgets('同一父任务下支持拖拽取消和键盘排序', (tester) async {

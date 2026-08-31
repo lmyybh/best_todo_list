@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -13,6 +14,7 @@ import '../common/formatters.dart';
 import 'event_card_editing_session.dart';
 
 const int _maximumPreviewDepth = 2;
+const Duration _scrollHandoffIdleDuration = Duration(milliseconds: 200);
 
 class EventCardTaskInteraction extends StatefulWidget {
   const EventCardTaskInteraction({
@@ -45,7 +47,9 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
     debugLabel: 'event-inline-task-rename',
   )..addListener(_handleInlineRenameFocusChange);
   Timer? highlightTimer;
+  Timer? scrollHandoffTimer;
   String? highlightedId;
+  int? guardedScrollDirection;
 
   @override
   void initState() {
@@ -68,6 +72,7 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
   @override
   void dispose() {
     highlightTimer?.cancel();
+    scrollHandoffTimer?.cancel();
     editingSession.removeListener(_handleEditingChanged);
     editingSession.dispose();
     inlineDraftFocusNode.removeListener(_handleInlineDraftFocusChange);
@@ -78,6 +83,59 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
     inlineRenameController.dispose();
     treeScrollController.dispose();
     super.dispose();
+  }
+
+  void _handleTreePointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent ||
+        !treeScrollController.hasClients ||
+        event.scrollDelta.dy == 0) {
+      return;
+    }
+    final position = treeScrollController.position;
+    final direction = event.scrollDelta.dy.sign.toInt();
+    final atBoundary = direction > 0
+        ? position.pixels >= position.maxScrollExtent
+        : position.pixels <= position.minScrollExtent;
+
+    if (guardedScrollDirection == direction && atBoundary) {
+      _guardScrollBoundary(direction);
+      GestureBinding.instance.pointerSignalResolver.register(event, (
+        resolvedEvent,
+      ) {
+        if (resolvedEvent is PointerScrollEvent) {
+          resolvedEvent.respond(allowPlatformDefault: false);
+        }
+      });
+      return;
+    }
+    if (guardedScrollDirection != null && guardedScrollDirection != direction) {
+      _clearScrollBoundaryGuard();
+    }
+    if (atBoundary) return;
+
+    final target = (position.pixels + event.scrollDelta.dy).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    final reachesBoundary = direction > 0
+        ? target >= position.maxScrollExtent
+        : target <= position.minScrollExtent;
+    if (reachesBoundary) _guardScrollBoundary(direction);
+  }
+
+  void _guardScrollBoundary(int direction) {
+    guardedScrollDirection = direction;
+    scrollHandoffTimer?.cancel();
+    scrollHandoffTimer = Timer(
+      _scrollHandoffIdleDuration,
+      _clearScrollBoundaryGuard,
+    );
+  }
+
+  void _clearScrollBoundaryGuard() {
+    guardedScrollDirection = null;
+    scrollHandoffTimer?.cancel();
+    scrollHandoffTimer = null;
   }
 
   void _handleInlineDraftFocusChange() {
@@ -322,8 +380,14 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
       onCreateChild: (parentId) => unawaited(_openInlineDraft(parentId)),
       onRename: (task) => unawaited(_openInlineRename(task)),
       onDelete: (task) => unawaited(_deleteTaskNode(task)),
-      onToggleExpanded: (nodeId) => setState(() {
-        if (!collapsedIds.add(nodeId)) collapsedIds.remove(nodeId);
+      onToggleExpanded: (nodeId, depth) => setState(() {
+        if (depth >= _maximumPreviewDepth &&
+            !expandedBeyondPreviewIds.contains(nodeId)) {
+          expandedBeyondPreviewIds.add(nodeId);
+          collapsedIds.remove(nodeId);
+        } else if (!collapsedIds.add(nodeId)) {
+          collapsedIds.remove(nodeId);
+        }
       }),
     );
     return Column(
@@ -344,22 +408,25 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
                   builder: (context) {
                     return KeyedSubtree(
                       key: treeViewportKey,
-                      child: Scrollbar(
-                        key: ValueKey<String>(
-                          'event-tree-scrollbar-${widget.rootEventId}',
-                        ),
-                        controller: treeScrollController,
-                        thumbVisibility: true,
-                        interactive: true,
-                        radius: const Radius.circular(4),
-                        child: _EventTaskGroup(
+                      child: Listener(
+                        onPointerSignal: _handleTreePointerSignal,
+                        child: Scrollbar(
                           key: ValueKey<String>(
-                            'event-tree-scroll-${widget.rootEventId}',
+                            'event-tree-scrollbar-${widget.rootEventId}',
                           ),
-                          interaction: interaction,
-                          parentId: widget.rootEventId,
-                          depth: 0,
-                          scrollController: treeScrollController,
+                          controller: treeScrollController,
+                          thumbVisibility: true,
+                          interactive: true,
+                          radius: const Radius.circular(4),
+                          child: _EventTaskGroup(
+                            key: ValueKey<String>(
+                              'event-tree-scroll-${widget.rootEventId}',
+                            ),
+                            interaction: interaction,
+                            parentId: widget.rootEventId,
+                            depth: 0,
+                            scrollController: treeScrollController,
+                          ),
                         ),
                       ),
                     );
@@ -405,19 +472,17 @@ class _EventTaskTreeInteraction {
   final ValueChanged<String> _onCreateChild;
   final ValueChanged<TodoNode> _onRename;
   final ValueChanged<TodoNode> _onDelete;
-  final ValueChanged<String> _onToggleExpanded;
+  final void Function(String nodeId, int depth) _onToggleExpanded;
 
-  bool isExpanded(String nodeId) => !_collapsedIds.contains(nodeId);
-
-  bool canExpand(TodoNode node, int depth) =>
-      !tree.isLeaf(node.id) &&
+  bool isExpanded(String nodeId, int depth) =>
+      !_collapsedIds.contains(nodeId) &&
       (depth < _maximumPreviewDepth ||
-          _expandedBeyondPreviewIds.contains(node.id));
+          _expandedBeyondPreviewIds.contains(nodeId));
+
+  bool canExpand(TodoNode node) => !tree.isLeaf(node.id);
 
   bool showsChildren(TodoNode node, int depth) =>
-      isExpanded(node.id) &&
-      (depth < _maximumPreviewDepth ||
-          _expandedBeyondPreviewIds.contains(node.id)) &&
+      isExpanded(node.id, depth) &&
       (tree.childrenOf(node.id).isNotEmpty || showsDraft(node.id));
 
   bool showsDraft(String parentId) => _inlineDraftParentId == parentId;
@@ -436,7 +501,8 @@ class _EventTaskTreeInteraction {
 
   void delete(TodoNode node) => _onDelete(node);
 
-  void toggleExpanded(String nodeId) => _onToggleExpanded(nodeId);
+  void toggleExpanded(String nodeId, int depth) =>
+      _onToggleExpanded(nodeId, depth);
 }
 
 class _EventTaskGroup extends StatefulWidget {
@@ -676,11 +742,11 @@ class _EventTreeRowState extends State<_EventTreeRow> {
     final node = widget.node;
     final tree = interaction.tree;
     final depth = widget.depth;
-    final expanded = interaction.isExpanded(node.id);
+    final expanded = interaction.isExpanded(node.id, depth);
     final highlighted = interaction.isHighlighted(node.id);
     final renaming = interaction.isRenaming(node.id);
-    final onToggleExpanded = interaction.canExpand(node, depth)
-        ? () => interaction.toggleExpanded(node.id)
+    final onToggleExpanded = interaction.canExpand(node)
+        ? () => interaction.toggleExpanded(node.id, depth)
         : null;
     final children = tree.childrenOf(node.id);
     final hiddenDescendants = tree.descendantsOf(node.id).length;
@@ -892,7 +958,7 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                           style: TextStyle(color: colors.faint, fontSize: 9),
                         ),
                       if (children.isNotEmpty &&
-                          onToggleExpanded == null &&
+                          !expanded &&
                           !hovered &&
                           !renaming) ...<Widget>[
                         const SizedBox(width: 8),
