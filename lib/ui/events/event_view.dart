@@ -11,6 +11,7 @@ import '../common/deadline_dialog.dart';
 import '../common/delete_confirmation_dialog.dart';
 import '../common/formatters.dart';
 import '../common/node_tile.dart';
+import '../common/task_move_drag.dart';
 import 'event_board_view.dart';
 
 class EventView extends StatelessWidget {
@@ -83,53 +84,61 @@ class _EventDetailPanel extends StatelessWidget {
                   const SizedBox(height: 26),
                   _SectionHeader(label: '子任务', count: children.length),
                   const SizedBox(height: 10),
-                  if (children.isEmpty)
-                    const _InlineEmpty(message: '把这件事拆成下一步行动')
-                  else
-                    ReorderableListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      buildDefaultDragHandles: false,
-                      itemCount: children.length,
-                      onReorderItem: (oldIndex, newIndex) {
-                        final reordered = List<TodoNode>.of(children);
-                        final moved = reordered.removeAt(oldIndex);
-                        reordered.insert(newIndex, moved);
-                        controller.reorderChildren(
-                          node.id,
-                          reordered.map((item) => item.id).toList(),
-                        );
-                      },
-                      itemBuilder: (context, index) {
-                        final child = children[index];
-                        return Padding(
-                          key: ValueKey<String>(child.id),
-                          padding: const EdgeInsets.only(bottom: 7),
-                          child: NodeTile(
-                            node: child,
-                            tree: tree,
-                            now: controller.now,
-                            onOpen: () => controller.select(child.id),
-                            onToggleComplete: (value) =>
-                                controller.setCompleted(child.id, value),
-                            trailing: ReorderableDragStartListener(
-                              index: index,
-                              child: Tooltip(
-                                message: '拖动排序',
-                                child: MouseRegion(
-                                  cursor: SystemMouseCursors.grab,
-                                  child: Icon(
-                                    Icons.drag_indicator,
-                                    size: 17,
-                                    color: colors.muted,
+                  TaskMoveDropTarget(
+                    key: ValueKey<String>('detail-list-drop-${node.id}'),
+                    controller: controller,
+                    parentId: node.id,
+                    child: children.isEmpty
+                        ? const _InlineEmpty(message: '把这件事拆成下一步行动')
+                        : ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: children.length,
+                            itemBuilder: (context, index) {
+                              final child = children[index];
+                              return Padding(
+                                key: ValueKey<String>(child.id),
+                                padding: const EdgeInsets.only(bottom: 7),
+                                child: TaskMoveRowDropTarget(
+                                  key: ValueKey<String>(
+                                    'detail-task-drop-${child.id}',
+                                  ),
+                                  controller: controller,
+                                  target: child,
+                                  child: NodeTile(
+                                    node: child,
+                                    tree: tree,
+                                    now: controller.now,
+                                    onOpen: () => controller.select(child.id),
+                                    onToggleComplete: (value) => controller
+                                        .setCompleted(child.id, value),
+                                    trailing: TaskMoveDragHandle(
+                                      key: ValueKey<String>(
+                                        'detail-task-drag-${child.id}',
+                                      ),
+                                      node: child,
+                                      child: Tooltip(
+                                        message: '拖动调整位置或层级',
+                                        child: MouseRegion(
+                                          cursor: SystemMouseCursors.grab,
+                                          child: SizedBox(
+                                            width: 28,
+                                            height: 28,
+                                            child: Icon(
+                                              Icons.drag_indicator,
+                                              size: 17,
+                                              color: colors.muted,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ),
+                              );
+                            },
                           ),
-                        );
-                      },
-                    ),
+                  ),
                   const SizedBox(height: 2),
                   _QuickAdd(controller: controller, parentId: node.id),
                 ],

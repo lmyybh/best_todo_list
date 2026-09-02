@@ -11,6 +11,7 @@ import '../../domain/node_tree.dart';
 import '../../domain/todo_node.dart';
 import '../common/delete_node.dart';
 import '../common/formatters.dart';
+import '../common/task_move_drag.dart';
 import 'event_card_editing_session.dart';
 
 const int _maximumPreviewDepth = 2;
@@ -393,45 +394,50 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
     return Column(
       children: <Widget>[
         Expanded(
-          child: children.isEmpty
-              ? Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Align(
-                    alignment: Alignment.topLeft,
-                    child: Text(
-                      '还没有子任务',
-                      style: TextStyle(color: colors.faint, fontSize: 11),
+          child: TaskMoveDropTarget(
+            key: ValueKey<String>('event-list-drop-${widget.rootEventId}'),
+            controller: controller,
+            parentId: widget.rootEventId,
+            child: children.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Align(
+                      alignment: Alignment.topLeft,
+                      child: Text(
+                        '还没有子任务',
+                        style: TextStyle(color: colors.faint, fontSize: 11),
+                      ),
                     ),
-                  ),
-                )
-              : Builder(
-                  builder: (context) {
-                    return KeyedSubtree(
-                      key: treeViewportKey,
-                      child: Listener(
-                        onPointerSignal: _handleTreePointerSignal,
-                        child: Scrollbar(
-                          key: ValueKey<String>(
-                            'event-tree-scrollbar-${widget.rootEventId}',
-                          ),
-                          controller: treeScrollController,
-                          thumbVisibility: true,
-                          interactive: true,
-                          radius: const Radius.circular(4),
-                          child: _EventTaskGroup(
+                  )
+                : Builder(
+                    builder: (context) {
+                      return KeyedSubtree(
+                        key: treeViewportKey,
+                        child: Listener(
+                          onPointerSignal: _handleTreePointerSignal,
+                          child: Scrollbar(
                             key: ValueKey<String>(
-                              'event-tree-scroll-${widget.rootEventId}',
+                              'event-tree-scrollbar-${widget.rootEventId}',
                             ),
-                            interaction: interaction,
-                            parentId: widget.rootEventId,
-                            depth: 0,
-                            scrollController: treeScrollController,
+                            controller: treeScrollController,
+                            thumbVisibility: true,
+                            interactive: true,
+                            radius: const Radius.circular(4),
+                            child: _EventTaskGroup(
+                              key: ValueKey<String>(
+                                'event-tree-scroll-${widget.rootEventId}',
+                              ),
+                              interaction: interaction,
+                              parentId: widget.rootEventId,
+                              depth: 0,
+                              scrollController: treeScrollController,
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  },
-                ),
+                      );
+                    },
+                  ),
+          ),
         ),
         _CardQuickAdd(
           controller: controller,
@@ -524,89 +530,43 @@ class _EventTaskGroup extends StatefulWidget {
 }
 
 class _EventTaskGroupState extends State<_EventTaskGroup> {
-  final GlobalKey<ReorderableListState> listKey =
-      GlobalKey<ReorderableListState>();
-  final FocusNode focusNode = FocusNode(debugLabel: 'event-task-group');
-  String? draggingId;
-
-  @override
-  void dispose() {
-    focusNode.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final interaction = widget.interaction;
     final children = interaction.tree.childrenOf(widget.parentId);
     final showsInlineDraft = interaction.showsDraft(widget.parentId);
     final rootGroup = widget.scrollController != null;
-    return Focus(
-      focusNode: focusNode,
-      onKeyEvent: (_, event) {
-        if (event is KeyDownEvent &&
-            event.logicalKey == LogicalKeyboardKey.escape &&
-            draggingId != null) {
-          listKey.currentState?.cancelReorder();
-          setState(() => draggingId = null);
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
-      },
-      child: ReorderableList(
-        key: listKey,
-        controller: widget.scrollController,
-        shrinkWrap: !rootGroup,
-        physics: rootGroup
-            ? const ClampingScrollPhysics()
-            : const NeverScrollableScrollPhysics(),
-        padding: rootGroup
-            ? const EdgeInsets.fromLTRB(10, 9, 16, 4)
-            : EdgeInsets.zero,
-        autoScrollerVelocityScalar: 34,
-        itemCount: children.length + (showsInlineDraft ? 1 : 0),
-        onReorderStart: (index) {
-          focusNode.requestFocus();
-          setState(() => draggingId = children[index].id);
-        },
-        onReorderEnd: (_) => setState(() => draggingId = null),
-        onReorderItem: (oldIndex, newIndex) =>
-            _reorder(children, oldIndex, newIndex),
-        proxyDecorator: (child, index, animation) => AnimatedBuilder(
-          animation: animation,
-          builder: (context, _) => Material(
-            color: Theme.of(context).colorScheme.surface,
-            elevation: 4 + animation.value * 8,
-            shadowColor: Colors.black26,
-            borderRadius: BorderRadius.circular(9),
-            clipBehavior: Clip.antiAlias,
-            child: child,
-          ),
-        ),
-        itemBuilder: (context, index) {
-          if (index == children.length) {
-            return KeyedSubtree(
-              key: ValueKey<String>('event-inline-draft-${widget.parentId}'),
-              child: interaction.buildDraft(widget.depth),
-            );
-          }
-          final node = children[index];
-          return _EventTreeBranch(
-            key: ValueKey<String>('event-task-branch-${node.id}'),
-            interaction: interaction,
-            node: node,
-            depth: widget.depth,
-            reorderIndex: index,
-            dragging: draggingId == node.id,
-            onKeyboardReorder: (direction, toEdge) {
-              final newIndex = toEdge
-                  ? (direction < 0 ? 0 : children.length - 1)
-                  : (index + direction).clamp(0, children.length - 1);
-              _reorder(children, index, newIndex);
-            },
+    return ListView.builder(
+      controller: widget.scrollController,
+      shrinkWrap: !rootGroup,
+      physics: rootGroup
+          ? const ClampingScrollPhysics()
+          : const NeverScrollableScrollPhysics(),
+      padding: rootGroup
+          ? const EdgeInsets.fromLTRB(10, 9, 16, 4)
+          : EdgeInsets.zero,
+      itemCount: children.length + (showsInlineDraft ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index == children.length) {
+          return KeyedSubtree(
+            key: ValueKey<String>('event-inline-draft-${widget.parentId}'),
+            child: interaction.buildDraft(widget.depth),
           );
-        },
-      ),
+        }
+        final node = children[index];
+        return _EventTreeBranch(
+          key: ValueKey<String>('event-task-branch-${node.id}'),
+          interaction: interaction,
+          node: node,
+          depth: widget.depth,
+          onKeyboardReorder: (direction, toEdge) {
+            final newIndex = toEdge
+                ? (direction < 0 ? 0 : children.length - 1)
+                : (index + direction).clamp(0, children.length - 1);
+            _reorder(children, index, newIndex);
+          },
+        );
+      },
     );
   }
 
@@ -629,8 +589,6 @@ class _EventTreeBranch extends StatelessWidget {
     required this.interaction,
     required this.node,
     required this.depth,
-    required this.reorderIndex,
-    required this.dragging,
     required this.onKeyboardReorder,
     super.key,
   });
@@ -638,8 +596,6 @@ class _EventTreeBranch extends StatelessWidget {
   final _EventTaskTreeInteraction interaction;
   final TodoNode node;
   final int depth;
-  final int reorderIndex;
-  final bool dragging;
   final void Function(int direction, bool toEdge) onKeyboardReorder;
 
   @override
@@ -650,8 +606,6 @@ class _EventTreeBranch extends StatelessWidget {
         interaction: interaction,
         node: node,
         depth: depth,
-        reorderIndex: reorderIndex,
-        dragging: dragging,
         onKeyboardReorder: onKeyboardReorder,
       ),
       if (interaction.showsChildren(node, depth))
@@ -669,16 +623,12 @@ class _EventTreeRow extends StatefulWidget {
     required this.interaction,
     required this.node,
     required this.depth,
-    required this.reorderIndex,
-    required this.dragging,
     required this.onKeyboardReorder,
   });
 
   final _EventTaskTreeInteraction interaction;
   final TodoNode node;
   final int depth;
-  final int reorderIndex;
-  final bool dragging;
   final void Function(int direction, bool toEdge) onKeyboardReorder;
 
   @override
@@ -762,7 +712,7 @@ class _EventTreeRowState extends State<_EventTreeRow> {
             states.contains(WidgetState.hovered) ? colors.dangerSoft : null,
       ),
     );
-    return Focus(
+    final row = Focus(
       key: ValueKey<String>('event-row-focus-${node.id}'),
       focusNode: focusNode,
       onFocusChange: (value) => setState(() => focused = value),
@@ -813,7 +763,7 @@ class _EventTreeRowState extends State<_EventTreeRow> {
           ),
           child: AnimatedOpacity(
             key: ValueKey<String>('event-task-drag-source-${node.id}'),
-            opacity: widget.dragging ? 0.24 : 1,
+            opacity: 1,
             duration: const Duration(milliseconds: 90),
             curve: Curves.easeOut,
             child: GestureDetector(
@@ -836,19 +786,19 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                         child: AnimatedOpacity(
                           opacity: renaming
                               ? 0.25
-                              : hovered || widget.dragging
+                              : hovered
                               ? 1
                               : 0.45,
                           duration: const Duration(milliseconds: 90),
                           child: IgnorePointer(
                             ignoring: renaming,
-                            child: ReorderableDragStartListener(
-                              index: widget.reorderIndex,
+                            child: TaskMoveDragHandle(
                               key: ValueKey<String>(
                                 'event-task-drag-${node.id}',
                               ),
+                              node: node,
                               child: Tooltip(
-                                message: '拖动同级排序 · ⌥↑↓ 键盘移动',
+                                message: '拖动调整位置或层级 · ⌥↑↓ 键盘排序',
                                 child: MouseRegion(
                                   cursor: SystemMouseCursors.grab,
                                   child: Icon(
@@ -1030,6 +980,12 @@ class _EventTreeRowState extends State<_EventTreeRow> {
           ),
         ),
       ),
+    );
+    return TaskMoveRowDropTarget(
+      key: ValueKey<String>('event-task-drop-${node.id}'),
+      controller: controller,
+      target: node,
+      child: row,
     );
   }
 }

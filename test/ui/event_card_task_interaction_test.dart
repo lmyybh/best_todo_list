@@ -3,6 +3,7 @@ import 'package:best_todo_list/app/app_theme.dart';
 import 'package:best_todo_list/app/node_persistence_workspace.dart';
 import 'package:best_todo_list/domain/node_repository.dart';
 import 'package:best_todo_list/domain/todo_node.dart';
+import 'package:best_todo_list/ui/events/event_board_view.dart';
 import 'package:best_todo_list/ui/events/event_card_task_interaction.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -354,7 +355,10 @@ void main() {
     final handle = find.byKey(ValueKey<String>('event-task-drag-${second.id}'));
     final drag = await tester.startGesture(tester.getCenter(handle));
     await drag.moveBy(const Offset(0, -8));
-    await drag.moveTo(tester.getCenter(firstRow));
+    await drag.moveTo(
+      tester.getTopLeft(firstRow) +
+          Offset(tester.getSize(firstRow).width / 2, 1),
+    );
     await tester.pump(const Duration(milliseconds: 300));
     await drag.up();
     await tester.pumpAndSettle();
@@ -391,6 +395,108 @@ void main() {
       second.id,
     ]);
     expect(controller.eventDetailOpen, isTrue);
+  });
+
+  testWidgets('任意层级子任务可以直接拖到其他事件的任务下', (tester) async {
+    final fixture = await _InteractionFixture.create(idPrefix: 'move');
+    final sourceParent = await fixture.createTask(title: '准备阶段');
+    final moving = await fixture.createTask(
+      parentId: sourceParent.id,
+      title: '检查发布说明',
+    );
+    await fixture.controller.setCompleted(moving.id, true);
+    final otherEvent = await expectWriteSuccess(
+      fixture.controller.create(title: '上线复盘', selectCreated: false),
+    );
+    final target = await fixture.createTask(
+      parentId: otherEvent.id,
+      title: '归档材料',
+    );
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1000, 700));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(body: EventBoardView(controller: fixture.controller)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final row = find.byKey(ValueKey<String>('event-row-${moving.id}'));
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: tester.getCenter(row));
+    await mouse.moveTo(tester.getCenter(row));
+    await tester.pump();
+    final drag = await tester.startGesture(
+      tester.getCenter(
+        find.byKey(ValueKey<String>('event-task-drag-${moving.id}')),
+      ),
+    );
+    await drag.moveBy(const Offset(6, 0));
+    await drag.moveTo(
+      tester.getCenter(
+        find.byKey(ValueKey<String>('event-task-drop-${target.id}')),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 180));
+    await drag.up();
+    await tester.pumpAndSettle();
+
+    expect(fixture.controller.tree.nodes[moving.id]?.parentId, target.id);
+    expect(fixture.controller.tree.nodes[moving.id]?.completedAt, isNotNull);
+  });
+
+  testWidgets('子任务可以直接拖到其他事件且后代不接受放置', (tester) async {
+    final fixture = await _InteractionFixture.create(idPrefix: 'move-event');
+    final moving = await fixture.createTask(title: '准备阶段');
+    final descendant = await fixture.createTask(
+      parentId: moving.id,
+      title: '检查说明',
+    );
+    final otherEvent = await expectWriteSuccess(
+      fixture.controller.create(title: '上线复盘', selectCreated: false),
+    );
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1000, 700));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(body: EventBoardView(controller: fixture.controller)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final row = find.byKey(ValueKey<String>('event-row-${moving.id}'));
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: tester.getCenter(row));
+    await mouse.moveTo(tester.getCenter(row));
+    await tester.pump();
+    Future<void> dragMovingTo(Finder target) async {
+      await mouse.moveTo(tester.getCenter(row));
+      await tester.pump();
+      final drag = await tester.startGesture(
+        tester.getCenter(
+          find.byKey(ValueKey<String>('event-task-drag-${moving.id}')),
+        ),
+      );
+      await drag.moveBy(const Offset(6, 0));
+      await drag.moveTo(tester.getCenter(target));
+      await tester.pump(const Duration(milliseconds: 180));
+      await drag.up();
+      await tester.pumpAndSettle();
+    }
+
+    await dragMovingTo(
+      find.byKey(ValueKey<String>('event-task-drop-${descendant.id}')),
+    );
+    expect(fixture.controller.tree.nodes[moving.id]?.parentId, fixture.root.id);
+
+    await dragMovingTo(
+      find.byKey(ValueKey<String>('event-list-drop-${otherEvent.id}')),
+    );
+    expect(fixture.controller.tree.nodes[moving.id]?.parentId, otherEvent.id);
   });
 
   testWidgets('支持成功重命名任务', (tester) async {

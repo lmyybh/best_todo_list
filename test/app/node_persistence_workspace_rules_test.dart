@@ -144,7 +144,7 @@ void main() {
     expect((result as NodeWriteFailure).error, isA<NodeRuleException>());
   });
 
-  test('已完成节点移动前必须取消完成', () async {
+  test('已完成节点可以移动并保留完成状态', () async {
     final first = await expectWriteSuccess(workspace.createNode(title: 'A'));
     final second = await expectWriteSuccess(workspace.createNode(title: 'B'));
     await expectWriteSuccess(workspace.setLeafCompleted(first.id, true));
@@ -154,8 +154,9 @@ void main() {
       newParentId: second.id,
     );
 
-    expect(result, isA<NodeWriteFailure>());
-    expect((result as NodeWriteFailure).error, isA<NodeRuleException>());
+    expect(result, isA<NodeWriteSuccess>());
+    expect(workspace.tree.nodes[first.id]!.parentId, second.id);
+    expect(workspace.tree.nodes[first.id]!.completedAt, isNotNull);
   });
 
   test('移入已完成叶子时目标转为事件并清空完成时间', () async {

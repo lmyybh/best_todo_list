@@ -178,9 +178,6 @@ class NodePersistenceWorkspace {
     final currentTree = tree;
     final node = currentTree.nodes[nodeId];
     if (node == null) throw const NodeRuleException('任务不存在');
-    if (currentTree.isComplete(nodeId)) {
-      throw const NodeRuleException('请先取消完成，再移动任务');
-    }
     if (newParentId == nodeId ||
         (newParentId != null &&
             currentTree.isDescendant(
