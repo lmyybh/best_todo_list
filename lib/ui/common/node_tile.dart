@@ -10,7 +10,7 @@ class NodeTile extends StatefulWidget {
     required this.node,
     required this.tree,
     required this.onOpen,
-    required this.onToggleComplete,
+    required this.onStatusChanged,
     this.path,
     this.trailing,
     this.now,
@@ -20,7 +20,7 @@ class NodeTile extends StatefulWidget {
   final TodoNode node;
   final NodeTree tree;
   final VoidCallback onOpen;
-  final ValueChanged<bool> onToggleComplete;
+  final ValueChanged<TodoNodeStatus> onStatusChanged;
   final String? path;
   final Widget? trailing;
   final DateTime? now;
@@ -41,7 +41,12 @@ class _NodeTileState extends State<NodeTile> {
     final colors = AppColors.of(context);
     final isEvent = !tree.isLeaf(node.id);
     final complete = tree.isComplete(node.id);
-    final leaves = tree.leafDescendantsOf(node.id);
+    final abandoned = node.isAbandoned;
+    final leaves = tree.actionableLeafDescendantsOf(node.id);
+    final abandonedCount = tree
+        .leafDescendantsOf(node.id)
+        .where((leaf) => leaf.isAbandoned)
+        .length;
     final completedCount = leaves
         .where((leaf) => leaf.completedAt != null)
         .length;
@@ -94,7 +99,23 @@ class _NodeTileState extends State<NodeTile> {
                     ),
                     child: Row(
                       children: <Widget>[
-                        if (isEvent)
+                        if (abandoned)
+                          Semantics(
+                            button: true,
+                            label: '取消放弃',
+                            child: IconButton(
+                              tooltip: '取消放弃',
+                              onPressed: () =>
+                                  widget.onStatusChanged(TodoNodeStatus.active),
+                              visualDensity: VisualDensity.compact,
+                              icon: Icon(
+                                Icons.block_outlined,
+                                size: 19,
+                                color: colors.muted,
+                              ),
+                            ),
+                          )
+                        else if (isEvent)
                           Icon(
                             Icons.account_tree_outlined,
                             size: 20,
@@ -105,8 +126,11 @@ class _NodeTileState extends State<NodeTile> {
                             label: complete ? '取消完成' : '标记完成',
                             child: Checkbox.adaptive(
                               value: complete,
-                              onChanged: (value) =>
-                                  widget.onToggleComplete(value ?? false),
+                              onChanged: (value) => widget.onStatusChanged(
+                                value ?? false
+                                    ? TodoNodeStatus.completed
+                                    : TodoNodeStatus.active,
+                              ),
                               shape: const CircleBorder(),
                               visualDensity: VisualDensity.compact,
                             ),
@@ -127,10 +151,10 @@ class _NodeTileState extends State<NodeTile> {
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
-                                  decoration: complete
+                                  decoration: complete || abandoned
                                       ? TextDecoration.lineThrough
                                       : null,
-                                  color: complete
+                                  color: complete || abandoned
                                       ? colors.muted
                                       : Theme.of(context).colorScheme.onSurface,
                                 ),
@@ -158,7 +182,8 @@ class _NodeTileState extends State<NodeTile> {
                                       ),
                                     if (isEvent)
                                       Text(
-                                        '$completedCount / ${leaves.length} 已完成',
+                                        '$completedCount / ${leaves.length} 已完成'
+                                        '${abandonedCount == 0 ? '' : ' · $abandonedCount 已放弃'}',
                                         style: TextStyle(
                                           color: colors.muted,
                                           fontSize: 11,
@@ -170,6 +195,15 @@ class _NodeTileState extends State<NodeTile> {
                                         style: TextStyle(
                                           color: colors.muted,
                                           fontSize: 11,
+                                        ),
+                                      ),
+                                    if (abandoned)
+                                      Text(
+                                        '已放弃',
+                                        style: TextStyle(
+                                          color: colors.muted,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
                                         ),
                                       ),
                                   ],

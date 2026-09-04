@@ -101,6 +101,9 @@ class TimelineExperience {
     final completed = _laterSelected
         ? const <TimelineEntry>[]
         : query.completedEntriesForDate(tree, _selectedDate);
+    final abandoned = _laterSelected
+        ? const <TimelineEntry>[]
+        : query.abandonedEntriesForDate(tree, _selectedDate);
     final overdue = !_laterSelected && _sameDate(_selectedDate, _now)
         ? selectedEntries
               .where((entry) => entry.node.deadline?.isOverdue(_now) ?? false)
@@ -123,6 +126,7 @@ class TimelineExperience {
                 .where((entry) => !overdueIds.contains(entry.node.id))
                 .toList(),
       completed: completed,
+      abandoned: abandoned,
       laterCount: laterEntries.length,
     );
   }
@@ -148,12 +152,14 @@ class TimelineProjection {
     required List<TimelineEntry> overdue,
     required List<TimelineEntry> regular,
     required List<TimelineEntry> completed,
+    required List<TimelineEntry> abandoned,
     required this.laterCount,
   }) : dates = List<DateTime>.unmodifiable(dates),
        _counts = Map<DateTime, int>.unmodifiable(counts),
        overdue = List<TimelineEntry>.unmodifiable(overdue),
        regular = List<TimelineEntry>.unmodifiable(regular),
-       completed = List<TimelineEntry>.unmodifiable(completed);
+       completed = List<TimelineEntry>.unmodifiable(completed),
+       abandoned = List<TimelineEntry>.unmodifiable(abandoned);
 
   final DateTime now;
   final DateTime selectedDate;
@@ -164,6 +170,7 @@ class TimelineProjection {
   final List<TimelineEntry> overdue;
   final List<TimelineEntry> regular;
   final List<TimelineEntry> completed;
+  final List<TimelineEntry> abandoned;
   final int laterCount;
 
   int countFor(DateTime date) =>
@@ -205,6 +212,20 @@ class _TimelineQuery {
     return result;
   }
 
+  List<TimelineEntry> abandonedEntriesForDate(NodeTree tree, DateTime date) {
+    final target = _startOfDay(date);
+    final result =
+        tree.nodes.values
+            .where((node) {
+              final abandonedAt = node.abandonedAt?.toLocal();
+              return abandonedAt != null && _sameDate(abandonedAt, target);
+            })
+            .map((node) => _entryFor(tree, node))
+            .toList()
+          ..sort((a, b) => b.node.abandonedAt!.compareTo(a.node.abandonedAt!));
+    return result;
+  }
+
   List<TimelineEntry> laterEntries(NodeTree tree, DateTime after) {
     final boundary = _startOfDay(after).add(const Duration(days: 1));
     final result = _openEntries(tree).where((entry) {
@@ -217,12 +238,16 @@ class _TimelineQuery {
 
   int countForDate(NodeTree tree, DateTime date) =>
       entriesForDate(tree, date).length +
-      completedEntriesForDate(tree, date).length;
+      completedEntriesForDate(tree, date).length +
+      abandonedEntriesForDate(tree, date).length;
 
   List<TimelineEntry> _openEntries(NodeTree tree) => tree.nodes.values
       .where((node) => tree.isLeaf(node.id) || node.deadline != null)
       .map((node) => _entryFor(tree, node))
-      .where((entry) => !entry.isComplete)
+      .where(
+        (entry) =>
+            !entry.isComplete && !tree.isEffectivelyAbandoned(entry.node.id),
+      )
       .toList();
 
   TimelineEntry _entryFor(NodeTree tree, TodoNode node) => TimelineEntry(

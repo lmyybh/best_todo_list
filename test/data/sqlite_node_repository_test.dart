@@ -47,7 +47,7 @@ void main() {
         throwsA(
           isA<UnsupportedDatabaseVersion>()
               .having((error) => error.found, 'found', version)
-              .having((error) => error.supported, 'supported', 4),
+              .having((error) => error.supported, 'supported', 5),
         ),
       );
 
@@ -60,6 +60,26 @@ void main() {
       await directory.delete(recursive: true);
     });
   }
+
+  test('版本 4 数据库升级后保留数据并支持放弃状态', () async {
+    final directory = await Directory.systemTemp.createTemp('todo_v4_');
+    final path = p.join(directory.path, 'test.sqlite');
+    await _createVersion4Database(path);
+
+    final database = await AppDatabase.open(path: path);
+    final repository = SqliteNodeRepository(database);
+    final restored = (await repository.loadNodes()).single;
+    expect(restored.title, '已有任务');
+    expect(restored.abandonedAt, isNull);
+
+    final abandonedAt = DateTime.utc(2026, 8, 12, 9);
+    await repository.saveNodesAtomically(<TodoNode>[
+      restored.copyWith(abandonedAt: abandonedAt, updatedAt: abandonedAt),
+    ]);
+    expect((await repository.loadNodes()).single.abandonedAt, abandonedAt);
+    await repository.close();
+    await directory.delete(recursive: true);
+  });
 
   test('文件数据库重开后数据仍可恢复，软删除默认隐藏', () async {
     final directory = await Directory.systemTemp.createTemp('best_todo_test_');
@@ -93,6 +113,7 @@ void main() {
     );
     expect(restored.createdAt, created);
     expect(restored.completedAt, completed);
+    expect(restored.abandonedAt, isNull);
 
     final deletedAt = DateTime.utc(2026, 8, 11, 9);
     await repository.saveNodesAtomically(<TodoNode>[
@@ -138,6 +159,42 @@ void main() {
     await repository.close();
     await directory.delete(recursive: true);
   });
+}
+
+Future<void> _createVersion4Database(String path) async {
+  final database = await databaseFactoryFfi.openDatabase(
+    path,
+    options: OpenDatabaseOptions(
+      version: 4,
+      onCreate: (database, _) => database.execute('''
+        CREATE TABLE nodes (
+          id TEXT PRIMARY KEY,
+          parent_id TEXT NULL,
+          title TEXT NOT NULL,
+          notes TEXT NOT NULL DEFAULT '',
+          deadline_date TEXT NULL,
+          deadline_at INTEGER NULL,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          completed_at INTEGER NULL,
+          deleted_at INTEGER NULL,
+          manual_order INTEGER NOT NULL,
+          FOREIGN KEY (parent_id) REFERENCES nodes(id),
+          CHECK (deadline_date IS NULL OR deadline_at IS NULL)
+        )
+      '''),
+    ),
+  );
+  final created = DateTime.utc(2026, 8, 11, 8, 30);
+  await database.insert('nodes', <String, Object?>{
+    'id': 'v4-node',
+    'title': '已有任务',
+    'notes': '',
+    'created_at': created.millisecondsSinceEpoch,
+    'updated_at': created.millisecondsSinceEpoch,
+    'manual_order': 1000,
+  });
+  await database.close();
 }
 
 Future<void> _createLegacyDatabase(String path, int version) async {

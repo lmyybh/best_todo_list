@@ -91,7 +91,7 @@ class EventBoardLayout {
     required double minimumHeight,
     required double maximumHeight,
   }) {
-    final descendantCount = tree.descendantsOf(node.id).length;
+    final descendantCount = tree.visibleDescendantsOf(node.id).length;
     final visibleRows = descendantCount.clamp(0, previewRowLimit);
     final hidden = descendantCount > visibleRows;
     return (225 + visibleRows * 36 + (hidden ? 28 : 0))

@@ -58,7 +58,7 @@ class _EventBoardViewState extends State<EventBoardView> {
 
   @override
   Widget build(BuildContext context) {
-    final roots = widget.controller.tree.childrenOf(null);
+    final roots = widget.controller.tree.visibleChildrenOf(null);
     final rootsById = <String, TodoNode>{
       for (final root in roots) root.id: root,
     };
@@ -416,8 +416,12 @@ class _EventCardState extends State<_EventCard> {
     final color = widget.color;
     final dropTargeted = widget.dropTargeted;
     final colors = AppColors.of(context);
-    final leaves = tree.leafDescendantsOf(node.id);
+    final leaves = tree.actionableLeafDescendantsOf(node.id);
     final completed = leaves.where((leaf) => leaf.completedAt != null).length;
+    final abandoned = tree
+        .leafDescendantsOf(node.id)
+        .where((leaf) => leaf.isAbandoned)
+        .length;
     final progress = leaves.isEmpty ? 0.0 : completed / leaves.length;
     final children = tree.childrenOf(node.id);
     Widget dragRegion() => Focus(
@@ -643,6 +647,15 @@ class _EventCardState extends State<_EventCard> {
                                 child: const Text('重命名'),
                               ),
                               MenuItemButton(
+                                onPressed: () =>
+                                    _abandonTask(context, controller, node),
+                                leadingIcon: const Icon(
+                                  Icons.block_outlined,
+                                  size: 17,
+                                ),
+                                child: const Text('放弃任务'),
+                              ),
+                              MenuItemButton(
                                 onPressed: () => confirmDeleteNode(
                                   context,
                                   controller,
@@ -669,7 +682,8 @@ class _EventCardState extends State<_EventCard> {
                       Row(
                         children: <Widget>[
                           Text(
-                            '$completed / ${leaves.length} 已完成',
+                            '$completed / ${leaves.length} 已完成'
+                            '${abandoned == 0 ? '' : ' · $abandoned 已放弃'}',
                             style: TextStyle(color: colors.muted, fontSize: 10),
                           ),
                           const Spacer(),
@@ -703,6 +717,28 @@ class _EventCardState extends State<_EventCard> {
       ),
     );
   }
+}
+
+Future<void> _abandonTask(
+  BuildContext context,
+  AppController controller,
+  TodoNode node,
+) async {
+  final result = await controller.setTaskStatus(
+    node.id,
+    TodoNodeStatus.abandoned,
+  );
+  if (!context.mounted || result is NodeWriteFailure) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: const Text('任务已放弃'),
+      action: SnackBarAction(
+        label: '撤销',
+        onPressed: () =>
+            controller.setTaskStatus(node.id, TodoNodeStatus.active),
+      ),
+    ),
+  );
 }
 
 class _DeadlineLabel extends StatelessWidget {

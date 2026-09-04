@@ -17,6 +17,7 @@ class TimelineView extends StatelessWidget {
     final overdue = projection.overdue;
     final regular = projection.regular;
     final completed = projection.completed;
+    final abandoned = projection.abandoned;
 
     return Focus(
       autofocus: true,
@@ -40,7 +41,11 @@ class TimelineView extends StatelessWidget {
               _DateNavigator(controller: controller, projection: projection),
               _TimelineContext(projection: projection),
               Expanded(
-                child: overdue.isEmpty && regular.isEmpty && completed.isEmpty
+                child:
+                    overdue.isEmpty &&
+                        regular.isEmpty &&
+                        completed.isEmpty &&
+                        abandoned.isEmpty
                     ? const _TimelineEmpty()
                     : ListView(
                         key: const ValueKey<String>('timeline-task-list'),
@@ -81,6 +86,18 @@ class TimelineView extends StatelessWidget {
                             ),
                             const SizedBox(height: 10),
                             ...completed.map(
+                              (entry) =>
+                                  _Entry(controller: controller, entry: entry),
+                            ),
+                          ],
+                          if (abandoned.isNotEmpty) ...<Widget>[
+                            const SizedBox(height: 20),
+                            _TimelineSection(
+                              title: '已放弃',
+                              count: abandoned.length,
+                            ),
+                            const SizedBox(height: 10),
+                            ...abandoned.map(
                               (entry) =>
                                   _Entry(controller: controller, entry: entry),
                             ),
@@ -363,8 +380,8 @@ class _Entry extends StatelessWidget {
           controller.select(entry.node.id);
           controller.setView(AppView.events);
         },
-        onToggleComplete: (value) =>
-            controller.setCompleted(entry.node.id, value),
+        onStatusChanged: (status) =>
+            controller.setTaskStatus(entry.node.id, status),
       ),
     ),
   );

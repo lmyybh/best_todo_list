@@ -1,5 +1,6 @@
 import 'package:best_todo_list/app/node_persistence_workspace.dart';
 import 'package:best_todo_list/app/node_write_result.dart';
+import 'package:best_todo_list/domain/todo_node.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/memory_node_repository.dart';
@@ -66,15 +67,100 @@ void main() {
   test('叶子完成和取消完成写入正确状态', () async {
     final task = await expectWriteSuccess(workspace.createNode(title: '任务'));
     final createdAt = task.createdAt;
-    await expectWriteSuccess(workspace.setLeafCompleted(task.id, true));
+    await expectWriteSuccess(
+      workspace.setNodeStatus(task.id, TodoNodeStatus.completed),
+    );
     var saved = workspace.nodes.single;
     expect(saved.createdAt, createdAt);
     expect(saved.completedAt, now);
 
-    await expectWriteSuccess(workspace.setLeafCompleted(task.id, false));
+    await expectWriteSuccess(
+      workspace.setNodeStatus(task.id, TodoNodeStatus.active),
+    );
     saved = workspace.nodes.single;
     expect(saved.createdAt, createdAt);
     expect(saved.completedAt, isNull);
+  });
+
+  test('任务状态转换保持完成与放弃互斥', () async {
+    final task = await expectWriteSuccess(workspace.createNode(title: '任务'));
+
+    await expectWriteSuccess(
+      workspace.setNodeStatus(task.id, TodoNodeStatus.completed),
+    );
+    now = now.add(const Duration(hours: 1));
+    await expectWriteSuccess(
+      workspace.setNodeStatus(task.id, TodoNodeStatus.abandoned),
+    );
+    var saved = workspace.tree.nodes[task.id]!;
+    expect(saved.status, TodoNodeStatus.abandoned);
+    expect(saved.completedAt, isNull);
+    expect(saved.abandonedAt, now);
+
+    await expectWriteSuccess(
+      workspace.setNodeStatus(task.id, TodoNodeStatus.active),
+    );
+    saved = workspace.tree.nodes[task.id]!;
+    expect(saved.status, TodoNodeStatus.active);
+    expect(saved.completedAt, isNull);
+    expect(saved.abandonedAt, isNull);
+  });
+
+  test('事件完成汇总排除已放弃叶子但不把全放弃事件算作完成', () async {
+    final root = await expectWriteSuccess(workspace.createNode(title: '事件'));
+    final completed = await expectWriteSuccess(
+      workspace.createNode(parentId: root.id, title: '完成项'),
+    );
+    final abandoned = await expectWriteSuccess(
+      workspace.createNode(parentId: root.id, title: '放弃项'),
+    );
+    await expectWriteSuccess(
+      workspace.setNodeStatus(completed.id, TodoNodeStatus.completed),
+    );
+    await expectWriteSuccess(
+      workspace.setNodeStatus(abandoned.id, TodoNodeStatus.abandoned),
+    );
+
+    expect(workspace.tree.isComplete(root.id), isTrue);
+    expect(
+      workspace.tree
+          .actionableLeafDescendantsOf(root.id)
+          .map((node) => node.id),
+      [completed.id],
+    );
+
+    await expectWriteSuccess(
+      workspace.setNodeStatus(completed.id, TodoNodeStatus.abandoned),
+    );
+    expect(workspace.tree.isComplete(root.id), isFalse);
+  });
+
+  test('有子任务的节点可以整支放弃并原样恢复', () async {
+    final root = await expectWriteSuccess(workspace.createNode(title: '事件'));
+    final branch = await expectWriteSuccess(
+      workspace.createNode(parentId: root.id, title: '阶段'),
+    );
+    final child = await expectWriteSuccess(
+      workspace.createNode(parentId: branch.id, title: '子任务'),
+    );
+    await expectWriteSuccess(
+      workspace.setNodeStatus(child.id, TodoNodeStatus.completed),
+    );
+
+    await expectWriteSuccess(
+      workspace.setNodeStatus(branch.id, TodoNodeStatus.abandoned),
+    );
+    expect(workspace.tree.nodes[branch.id]?.isAbandoned, isTrue);
+    expect(workspace.tree.nodes[child.id]?.status, TodoNodeStatus.completed);
+    expect(workspace.tree.isEffectivelyAbandoned(child.id), isTrue);
+    expect(workspace.tree.visibleChildrenOf(root.id), isEmpty);
+    expect(workspace.tree.actionableLeafDescendantsOf(root.id), isEmpty);
+
+    await expectWriteSuccess(
+      workspace.setNodeStatus(branch.id, TodoNodeStatus.active),
+    );
+    expect(workspace.tree.visibleChildrenOf(root.id).single.id, branch.id);
+    expect(workspace.tree.nodes[child.id]?.status, TodoNodeStatus.completed);
   });
 
   test('事件完成状态取所有叶子最晚完成时间', () async {
@@ -85,9 +171,13 @@ void main() {
     final second = await expectWriteSuccess(
       workspace.createNode(parentId: root.id, title: 'B'),
     );
-    await expectWriteSuccess(workspace.setLeafCompleted(first.id, true));
+    await expectWriteSuccess(
+      workspace.setNodeStatus(first.id, TodoNodeStatus.completed),
+    );
     now = now.add(const Duration(hours: 2));
-    await expectWriteSuccess(workspace.setLeafCompleted(second.id, true));
+    await expectWriteSuccess(
+      workspace.setNodeStatus(second.id, TodoNodeStatus.completed),
+    );
 
     expect(workspace.tree.isComplete(root.id), isTrue);
     expect(workspace.tree.effectiveCompletedAt(root.id), now);
@@ -95,7 +185,9 @@ void main() {
 
   test('已完成叶子添加首个子节点时清空 completedAt', () async {
     final task = await expectWriteSuccess(workspace.createNode(title: '原任务'));
-    await expectWriteSuccess(workspace.setLeafCompleted(task.id, true));
+    await expectWriteSuccess(
+      workspace.setNodeStatus(task.id, TodoNodeStatus.completed),
+    );
     await expectWriteSuccess(
       workspace.createNode(parentId: task.id, title: '新子任务'),
     );
@@ -110,7 +202,10 @@ void main() {
       workspace.createNode(parentId: root.id, title: '子任务'),
     );
 
-    final result = await workspace.setLeafCompleted(root.id, true);
+    final result = await workspace.setNodeStatus(
+      root.id,
+      TodoNodeStatus.completed,
+    );
 
     expect(result, isA<NodeWriteFailure>());
     expect((result as NodeWriteFailure).error, isA<NodeRuleException>());
@@ -147,7 +242,9 @@ void main() {
   test('已完成节点可以移动并保留完成状态', () async {
     final first = await expectWriteSuccess(workspace.createNode(title: 'A'));
     final second = await expectWriteSuccess(workspace.createNode(title: 'B'));
-    await expectWriteSuccess(workspace.setLeafCompleted(first.id, true));
+    await expectWriteSuccess(
+      workspace.setNodeStatus(first.id, TodoNodeStatus.completed),
+    );
 
     final result = await workspace.moveNode(
       nodeId: first.id,
@@ -164,7 +261,9 @@ void main() {
       workspace.createNode(title: '已完成目标'),
     );
     final moving = await expectWriteSuccess(workspace.createNode(title: '待移动'));
-    await expectWriteSuccess(workspace.setLeafCompleted(target.id, true));
+    await expectWriteSuccess(
+      workspace.setNodeStatus(target.id, TodoNodeStatus.completed),
+    );
     await expectWriteSuccess(
       workspace.moveNode(nodeId: moving.id, newParentId: target.id),
     );

@@ -301,6 +301,28 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
     await confirmDeleteNode(context, widget.controller, node);
   }
 
+  Future<void> _abandonTaskNode(TodoNode node) async {
+    _syncEditingText();
+    if (!await editingSession.finishActive() || !mounted) return;
+    inlineDraftController.clear();
+    inlineRenameController.clear();
+    final result = await widget.controller.setTaskStatus(
+      node.id,
+      TodoNodeStatus.abandoned,
+    );
+    if (!mounted || result is NodeWriteFailure) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('任务已放弃'),
+        action: SnackBarAction(
+          label: '撤销',
+          onPressed: () =>
+              widget.controller.setTaskStatus(node.id, TodoNodeStatus.active),
+        ),
+      ),
+    );
+  }
+
   void _syncEditingText() {
     if (editingSession.draftParentId != null) {
       editingSession.updateDraft(inlineDraftController.text);
@@ -344,7 +366,7 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
   Widget _buildContent(BuildContext context) {
     final controller = widget.controller;
     final tree = controller.tree;
-    final children = tree.childrenOf(widget.rootEventId);
+    final children = tree.visibleChildrenOf(widget.rootEventId);
     final colors = AppColors.of(context);
     final interaction = _EventTaskTreeInteraction(
       controller: controller,
@@ -381,6 +403,7 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
       onCreateChild: (parentId) => unawaited(_openInlineDraft(parentId)),
       onRename: (task) => unawaited(_openInlineRename(task)),
       onDelete: (task) => unawaited(_deleteTaskNode(task)),
+      onAbandon: (task) => unawaited(_abandonTaskNode(task)),
       onToggleExpanded: (nodeId, depth) => setState(() {
         if (depth >= _maximumPreviewDepth &&
             !expandedBeyondPreviewIds.contains(nodeId)) {
@@ -463,6 +486,7 @@ class _EventTaskTreeInteraction {
     required this._onCreateChild,
     required this._onRename,
     required this._onDelete,
+    required this._onAbandon,
     required this._onToggleExpanded,
   });
 
@@ -478,6 +502,7 @@ class _EventTaskTreeInteraction {
   final ValueChanged<String> _onCreateChild;
   final ValueChanged<TodoNode> _onRename;
   final ValueChanged<TodoNode> _onDelete;
+  final ValueChanged<TodoNode> _onAbandon;
   final void Function(String nodeId, int depth) _onToggleExpanded;
 
   bool isExpanded(String nodeId, int depth) =>
@@ -485,11 +510,11 @@ class _EventTaskTreeInteraction {
       (depth < _maximumPreviewDepth ||
           _expandedBeyondPreviewIds.contains(nodeId));
 
-  bool canExpand(TodoNode node) => !tree.isLeaf(node.id);
+  bool canExpand(TodoNode node) => tree.visibleChildrenOf(node.id).isNotEmpty;
 
   bool showsChildren(TodoNode node, int depth) =>
       isExpanded(node.id, depth) &&
-      (tree.childrenOf(node.id).isNotEmpty || showsDraft(node.id));
+      (tree.visibleChildrenOf(node.id).isNotEmpty || showsDraft(node.id));
 
   bool showsDraft(String parentId) => _inlineDraftParentId == parentId;
 
@@ -506,6 +531,8 @@ class _EventTaskTreeInteraction {
   void rename(TodoNode node) => _onRename(node);
 
   void delete(TodoNode node) => _onDelete(node);
+
+  void abandon(TodoNode node) => _onAbandon(node);
 
   void toggleExpanded(String nodeId, int depth) =>
       _onToggleExpanded(nodeId, depth);
@@ -533,7 +560,7 @@ class _EventTaskGroupState extends State<_EventTaskGroup> {
   @override
   Widget build(BuildContext context) {
     final interaction = widget.interaction;
-    final children = interaction.tree.childrenOf(widget.parentId);
+    final children = interaction.tree.visibleChildrenOf(widget.parentId);
     final showsInlineDraft = interaction.showsDraft(widget.parentId);
     final rootGroup = widget.scrollController != null;
     return ListView.builder(
@@ -698,8 +725,12 @@ class _EventTreeRowState extends State<_EventTreeRow> {
     final onToggleExpanded = interaction.canExpand(node)
         ? () => interaction.toggleExpanded(node.id, depth)
         : null;
-    final children = tree.childrenOf(node.id);
-    final hiddenDescendants = tree.descendantsOf(node.id).length;
+    final children = tree.visibleChildrenOf(node.id);
+    final isLeaf = tree.isLeaf(node.id);
+    final hiddenDescendants = tree
+        .descendantsOf(node.id)
+        .where((descendant) => !descendant.isAbandoned)
+        .length;
     final complete = tree.isComplete(node.id);
     final showActions = (hovered || focused) && !renaming;
     final deleteButtonStyle = ButtonStyle(
@@ -835,25 +866,30 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                       ),
                       InkResponse(
                         key: ValueKey<String>('event-complete-${node.id}'),
-                        onTap: children.isEmpty && !renaming
-                            ? () => controller.setCompleted(node.id, !complete)
+                        onTap: isLeaf && !renaming
+                            ? () => controller.setTaskStatus(
+                                node.id,
+                                complete
+                                    ? TodoNodeStatus.active
+                                    : TodoNodeStatus.completed,
+                              )
                             : null,
                         radius: 16,
                         child: Container(
-                          width: children.isEmpty ? 15 : 7,
-                          height: children.isEmpty ? 15 : 7,
+                          width: isLeaf ? 15 : 7,
+                          height: isLeaf ? 15 : 7,
                           decoration: BoxDecoration(
-                            color: children.isEmpty && complete
+                            color: isLeaf && complete
                                 ? colors.completion
-                                : children.isEmpty
+                                : isLeaf
                                 ? Colors.transparent
                                 : AppTheme.accent,
                             shape: BoxShape.circle,
-                            border: children.isEmpty && !complete
+                            border: isLeaf && !complete
                                 ? Border.all(color: colors.faint, width: 1.2)
                                 : null,
                           ),
-                          child: children.isEmpty && complete
+                          child: isLeaf && complete
                               ? const Icon(
                                   Icons.check,
                                   size: 10,
@@ -889,7 +925,7 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                                         style: TextStyle(
                                           color: complete ? colors.faint : null,
                                           fontSize: 12,
-                                          fontWeight: children.isEmpty
+                                          fontWeight: isLeaf
                                               ? FontWeight.w500
                                               : FontWeight.w600,
                                           decoration: complete
@@ -929,6 +965,25 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: <Widget>[
+                              IconButton(
+                                key: ValueKey<String>(
+                                  'event-abandon-task-${node.id}',
+                                ),
+                                tooltip: '放弃任务',
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints.tightFor(
+                                  width: 28,
+                                  height: 30,
+                                ),
+                                visualDensity: VisualDensity.compact,
+                                mouseCursor: SystemMouseCursors.click,
+                                onPressed: () => interaction.abandon(node),
+                                icon: Icon(
+                                  Icons.block_outlined,
+                                  size: 16,
+                                  color: colors.muted,
+                                ),
+                              ),
                               IconButton(
                                 key: ValueKey<String>(
                                   'event-add-child-${node.id}',

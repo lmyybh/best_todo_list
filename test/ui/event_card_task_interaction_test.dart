@@ -404,7 +404,7 @@ void main() {
       parentId: sourceParent.id,
       title: '检查发布说明',
     );
-    await fixture.controller.setCompleted(moving.id, true);
+    await fixture.controller.setTaskStatus(moving.id, TodoNodeStatus.completed);
     final otherEvent = await expectWriteSuccess(
       fixture.controller.create(title: '上线复盘', selectCreated: false),
     );
@@ -526,6 +526,64 @@ void main() {
     await tester.tap(find.byKey(ValueKey<String>('event-complete-${leaf.id}')));
     await tester.pumpAndSettle();
     expect(fixture.controller.tree.nodes[leaf.id]?.completedAt, isNotNull);
+  });
+
+  testWidgets('放弃叶子任务后从事件卡片隐藏且可以撤销', (tester) async {
+    final fixture = await _InteractionFixture.create(idPrefix: 'abandon');
+    final leaf = await fixture.createTask(title: '不再处理');
+    await fixture.pump(tester);
+
+    final row = find.byKey(ValueKey<String>('event-row-${leaf.id}'));
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: tester.getCenter(row));
+    await mouse.moveTo(tester.getCenter(row));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(ValueKey<String>('event-abandon-task-${leaf.id}')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(fixture.controller.tree.nodes[leaf.id]?.isAbandoned, isTrue);
+    expect(row, findsNothing);
+    expect(find.text('任务已放弃'), findsOneWidget);
+
+    await tester.tap(find.text('撤销'));
+    await tester.pumpAndSettle();
+    expect(
+      fixture.controller.tree.nodes[leaf.id]?.status,
+      TodoNodeStatus.active,
+    );
+    expect(row, findsOneWidget);
+  });
+
+  testWidgets('有子任务的节点也可以整支放弃并撤销', (tester) async {
+    final fixture = await _InteractionFixture.create(
+      idPrefix: 'abandon-branch',
+    );
+    final branch = await fixture.createTask(title: '不再继续的阶段');
+    await fixture.createTask(parentId: branch.id, title: '保留的子任务');
+    await fixture.pump(tester);
+
+    final row = find.byKey(ValueKey<String>('event-row-${branch.id}'));
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: tester.getCenter(row));
+    await mouse.moveTo(tester.getCenter(row));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(ValueKey<String>('event-abandon-task-${branch.id}')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(fixture.controller.tree.nodes[branch.id]?.isAbandoned, isTrue);
+    expect(find.text('不再继续的阶段'), findsNothing);
+    expect(find.text('保留的子任务'), findsNothing);
+
+    await tester.tap(find.text('撤销'));
+    await tester.pumpAndSettle();
+    expect(find.text('不再继续的阶段'), findsOneWidget);
+    expect(find.text('保留的子任务'), findsOneWidget);
   });
 
   testWidgets('支持折叠和展开分支任务', (tester) async {

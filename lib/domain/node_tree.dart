@@ -17,6 +17,10 @@ class NodeTree {
   List<TodoNode> childrenOf(String? parentId) =>
       List<TodoNode>.unmodifiable(_children[parentId] ?? const <TodoNode>[]);
 
+  List<TodoNode> visibleChildrenOf(String? parentId) => childrenOf(
+    parentId,
+  ).where((node) => !node.isAbandoned).toList(growable: false);
+
   bool isLeaf(String nodeId) => childrenOf(nodeId).isEmpty;
 
   Iterable<TodoNode> descendantsOf(String nodeId) sync* {
@@ -24,6 +28,18 @@ class NodeTree {
       yield child;
       yield* descendantsOf(child.id);
     }
+  }
+
+  Iterable<TodoNode> visibleDescendantsOf(String nodeId) =>
+      descendantsOf(nodeId).where((node) => !isEffectivelyAbandoned(node.id));
+
+  bool isEffectivelyAbandoned(String nodeId) {
+    TodoNode? current = nodes[nodeId];
+    while (current != null) {
+      if (current.isAbandoned) return true;
+      current = current.parentId == null ? null : nodes[current.parentId];
+    }
+    return false;
   }
 
   bool isDescendant({required String nodeId, required String ancestorId}) =>
@@ -34,10 +50,18 @@ class NodeTree {
     return descendantsOf(nodeId).where((node) => isLeaf(node.id)).toList();
   }
 
+  List<TodoNode> actionableLeafDescendantsOf(String nodeId) =>
+      leafDescendantsOf(nodeId)
+          .where((leaf) => !isEffectivelyAbandoned(leaf.id))
+          .toList(growable: false);
+
   bool isComplete(String nodeId) {
     final node = nodes[nodeId]!;
-    if (isLeaf(nodeId)) return node.completedAt != null;
-    final leaves = leafDescendantsOf(nodeId);
+    if (node.isAbandoned) return false;
+    if (isLeaf(nodeId)) {
+      return node.completedAt != null;
+    }
+    final leaves = actionableLeafDescendantsOf(nodeId);
     return leaves.isNotEmpty &&
         leaves.every((leaf) => leaf.completedAt != null);
   }
@@ -46,7 +70,7 @@ class NodeTree {
     final node = nodes[nodeId]!;
     if (isLeaf(nodeId)) return node.completedAt;
     if (!isComplete(nodeId)) return null;
-    return leafDescendantsOf(
+    return actionableLeafDescendantsOf(
       nodeId,
     ).map((leaf) => leaf.completedAt!).reduce((a, b) => a.isAfter(b) ? a : b);
   }

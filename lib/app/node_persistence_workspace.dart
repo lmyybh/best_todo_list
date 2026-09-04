@@ -125,21 +125,23 @@ class NodePersistenceWorkspace {
     ),
   );
 
-  Future<NodeWriteResult<void>> setLeafCompleted(
+  Future<NodeWriteResult<void>> setNodeStatus(
     String nodeId,
-    bool completed,
+    TodoNodeStatus status,
   ) => _write(() {
     final currentTree = tree;
     final node = currentTree.nodes[nodeId];
     if (node == null) throw const NodeRuleException('任务不存在');
-    if (!currentTree.isLeaf(nodeId)) {
+    if (status == TodoNodeStatus.completed && !currentTree.isLeaf(nodeId)) {
       throw const NodeRuleException('事件状态由子任务自动汇总');
     }
     final now = _clock().toUtc();
     return _NodeMutation<void>(null, <TodoNode>[
       node.copyWith(
-        completedAt: completed ? now : null,
-        clearCompletedAt: !completed,
+        completedAt: status == TodoNodeStatus.completed ? now : null,
+        clearCompletedAt: status != TodoNodeStatus.completed,
+        abandonedAt: status == TodoNodeStatus.abandoned ? now : null,
+        clearAbandonedAt: status != TodoNodeStatus.abandoned,
         updatedAt: now,
       ),
     ]);
@@ -221,18 +223,21 @@ class NodePersistenceWorkspace {
   ) => _write(() {
     final currentTree = tree;
     final siblings = currentTree.childrenOf(parentId);
-    if (siblings.length != orderedIds.length ||
-        siblings
-            .map((node) => node.id)
-            .toSet()
-            .difference(orderedIds.toSet())
-            .isNotEmpty) {
+    final siblingIds = siblings.map((node) => node.id).toSet();
+    if (orderedIds.toSet().length != orderedIds.length ||
+        orderedIds.any((id) => !siblingIds.contains(id))) {
       throw const NodeRuleException('排序列表与当前节点不一致');
     }
+    final completeOrder = <String>[
+      ...orderedIds,
+      ...siblings
+          .map((node) => node.id)
+          .where((id) => !orderedIds.contains(id)),
+    ];
     final now = _clock().toUtc();
     return _NodeMutation<void>(null, <TodoNode>[
-      for (var index = 0; index < orderedIds.length; index++)
-        currentTree.nodes[orderedIds[index]]!.copyWith(
+      for (var index = 0; index < completeOrder.length; index++)
+        currentTree.nodes[completeOrder[index]]!.copyWith(
           manualOrder: (index + 1) * 1000,
           updatedAt: now,
         ),

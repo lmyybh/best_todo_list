@@ -110,8 +110,8 @@ class _EventDetailPanel extends StatelessWidget {
                                     tree: tree,
                                     now: controller.now,
                                     onOpen: () => controller.select(child.id),
-                                    onToggleComplete: (value) => controller
-                                        .setCompleted(child.id, value),
+                                    onStatusChanged: (status) => controller
+                                        .setTaskStatus(child.id, status),
                                     trailing: TaskMoveDragHandle(
                                       key: ValueKey<String>(
                                         'detail-task-drag-${child.id}',
@@ -167,7 +167,12 @@ class _EventHeader extends StatelessWidget {
     final colors = AppColors.of(context);
     final isLeaf = tree.isLeaf(node.id);
     final complete = tree.isComplete(node.id);
-    final leaves = tree.leafDescendantsOf(node.id);
+    final abandoned = node.isAbandoned;
+    final leaves = tree.actionableLeafDescendantsOf(node.id);
+    final abandonedCount = tree
+        .leafDescendantsOf(node.id)
+        .where((leaf) => leaf.isAbandoned)
+        .length;
     final completedCount = leaves
         .where((leaf) => leaf.completedAt != null)
         .length;
@@ -241,24 +246,37 @@ class _EventHeader extends StatelessWidget {
                             label: '完成时间',
                             value: formatDate(completedAt),
                           ),
+                        if (node.abandonedAt != null)
+                          _LifecycleDate(
+                            icon: Icons.block_outlined,
+                            label: '放弃时间',
+                            value: formatDate(node.abandonedAt!),
+                          ),
                       ],
                     ),
                   ],
                 ),
               ),
-              if (isLeaf) ...<Widget>[
+              if (isLeaf || abandoned) ...<Widget>[
                 OutlinedButton.icon(
                   key: const ValueKey<String>('detail-completion-toggle'),
-                  onPressed: () => controller.setCompleted(node.id, !complete),
+                  onPressed: () => controller.setTaskStatus(
+                    node.id,
+                    abandoned
+                        ? TodoNodeStatus.active
+                        : complete
+                        ? TodoNodeStatus.active
+                        : TodoNodeStatus.completed,
+                  ),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: complete
+                    foregroundColor: complete || abandoned
                         ? Theme.of(context).colorScheme.primary
                         : colors.muted,
-                    backgroundColor: complete
+                    backgroundColor: complete || abandoned
                         ? colors.accentSoft
                         : Colors.transparent,
                     side: BorderSide(
-                      color: complete
+                      color: complete || abandoned
                           ? Theme.of(context).colorScheme.primary
                           : colors.border,
                     ),
@@ -269,12 +287,20 @@ class _EventHeader extends StatelessWidget {
                     visualDensity: VisualDensity.compact,
                   ),
                   icon: Icon(
-                    complete
+                    abandoned
+                        ? Icons.block_outlined
+                        : complete
                         ? Icons.check_circle
                         : Icons.radio_button_unchecked,
                     size: 16,
                   ),
-                  label: Text(complete ? '已完成' : '标记完成'),
+                  label: Text(
+                    abandoned
+                        ? '取消放弃'
+                        : complete
+                        ? '已完成'
+                        : '标记完成',
+                  ),
                 ),
                 const SizedBox(width: 8),
               ],
@@ -285,9 +311,20 @@ class _EventHeader extends StatelessWidget {
                 onSelected: (value) {
                   if (value == 'delete') {
                     _deleteSelected(context, controller, node);
+                  } else if (value == 'abandon') {
+                    controller.setTaskStatus(node.id, TodoNodeStatus.abandoned);
                   }
                 },
                 itemBuilder: (context) => <PopupMenuEntry<String>>[
+                  if (!abandoned)
+                    const PopupMenuItem(
+                      value: 'abandon',
+                      child: ListTile(
+                        leading: Icon(Icons.block_outlined),
+                        title: Text('放弃任务'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
                   PopupMenuItem(
                     value: 'delete',
                     child: ListTile(
@@ -406,11 +443,16 @@ class _EventHeader extends StatelessWidget {
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                leaves.isEmpty
+                                abandoned && isLeaf
+                                    ? '任务已放弃'
+                                    : leaves.isEmpty
                                     ? '添加子任务后汇总'
                                     : completedCount == leaves.length
-                                    ? '已全部完成'
-                                    : '还差 ${leaves.length - completedCount} 项',
+                                    ? abandonedCount == 0
+                                          ? '已全部完成'
+                                          : '已全部处理 · $abandonedCount 项放弃'
+                                    : '还差 ${leaves.length - completedCount} 项'
+                                          '${abandonedCount == 0 ? '' : ' · $abandonedCount 项放弃'}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(

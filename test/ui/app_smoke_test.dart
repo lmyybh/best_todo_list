@@ -227,7 +227,7 @@ void main() {
     await tester.enterText(quickAdd, '安排发布窗口');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    await controller.setCompleted(child.id, true);
+    await controller.setTaskStatus(child.id, TodoNodeStatus.completed);
     await tester.pumpAndSettle();
 
     final completedTitle = find.descendant(
@@ -333,7 +333,7 @@ void main() {
     final completed = await expectWriteSuccess(
       controller.create(title: '今天完成的任务'),
     );
-    await controller.setCompleted(completed.id, true);
+    await controller.setTaskStatus(completed.id, TodoNodeStatus.completed);
     await tester.binding.setSurfaceSize(const Size(1100, 760));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(TodoApp(controller: controller));
@@ -364,6 +364,27 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
     expect(find.text('8 月 12 日'), findsOneWidget);
+  });
+
+  testWidgets('放弃任务从事件卡片隐藏并显示在今日已放弃明细', (tester) async {
+    final task = await expectWriteSuccess(controller.create(title: '不再处理的任务'));
+    await controller.setTaskStatus(task.id, TodoNodeStatus.abandoned);
+    await tester.binding.setSurfaceSize(const Size(1100, 760));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(TodoApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(ValueKey<String>('event-card-${task.id}')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey<String>('timeline-navigation')));
+    await tester.pumpAndSettle();
+    expect(find.text('已放弃'), findsWidgets);
+    expect(find.text('不再处理的任务'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('取消放弃'));
+    await tester.pumpAndSettle();
+    expect(controller.tree.nodes[task.id]?.status, TodoNodeStatus.active);
+    expect(find.text('已放弃'), findsNothing);
   });
 
   testWidgets('逾期任务卡片使用明确的可见标题颜色', (tester) async {
@@ -415,7 +436,7 @@ void main() {
                   node: node,
                   tree: NodeTree(<TodoNode>[node]),
                   onOpen: () {},
-                  onToggleComplete: (_) {},
+                  onStatusChanged: (_) {},
                   trailing: const Icon(Icons.drag_indicator),
                 ),
               ),

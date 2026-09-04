@@ -13,6 +13,7 @@ void main() {
     DateTime? deadline,
     String? parentId,
     DateTime? completedAt,
+    DateTime? abandonedAt,
   }) => TodoNode(
     id: id,
     parentId: parentId,
@@ -21,6 +22,7 @@ void main() {
     createdAt: created,
     updatedAt: created,
     completedAt: completedAt,
+    abandonedAt: abandonedAt,
     manualOrder: 1000,
   );
 
@@ -135,6 +137,35 @@ void main() {
     expect(shown.map((entry) => entry.node.id), <String>['new', 'old']);
   });
 
+  test('已放弃任务不进入待办或已完成并按放弃时间归档', () {
+    final tree = NodeTree(<TodoNode>[
+      node(
+        'old',
+        deadline: DateTime(2026, 8, 11, 9),
+        abandonedAt: DateTime.utc(2026, 8, 11, 1),
+      ),
+      node('new', abandonedAt: DateTime.utc(2026, 8, 11, 2)),
+      node('other-day', abandonedAt: DateTime.utc(2026, 8, 10, 2)),
+    ]);
+
+    final projection = projectionFor(tree);
+    expect(projection.regular, isEmpty);
+    expect(projection.completed, isEmpty);
+    expect(projection.abandoned.map((entry) => entry.node.id), ['new', 'old']);
+    expect(projection.countFor(now), 2);
+  });
+
+  test('放弃事件后后代不再进入待办且只归档事件本身', () {
+    final tree = NodeTree(<TodoNode>[
+      node('event', abandonedAt: DateTime.utc(2026, 8, 11, 2)),
+      node('child', parentId: 'event', deadline: DateTime(2026, 8, 11, 9)),
+    ]);
+
+    final projection = projectionFor(tree);
+    expect(projection.regular, isEmpty);
+    expect(projection.abandoned.map((entry) => entry.node.id), ['event']);
+  });
+
   test('按自然日查询并只在需要时包含逾期', () {
     final tree = NodeTree(<TodoNode>[
       node('overdue', deadline: DateTime(2026, 8, 10, 18)),
@@ -169,7 +200,7 @@ void main() {
     expect(result.map((entry) => entry.node.id), <String>['a', 'b']);
   });
 
-  test('按日计数包含当天到期未完成和当天完成的任务', () {
+  test('按日计数包含当天到期、当天完成和当天放弃的任务', () {
     final tree = NodeTree(<TodoNode>[
       node('open', deadline: DateTime(2026, 8, 11, 9)),
       node(
@@ -177,7 +208,8 @@ void main() {
         deadline: DateTime(2026, 8, 11, 10),
         completedAt: DateTime.utc(2026, 8, 11, 10),
       ),
+      node('abandoned', abandonedAt: DateTime.utc(2026, 8, 11, 11)),
     ]);
-    expect(projectionFor(tree).countFor(now), 2);
+    expect(projectionFor(tree).countFor(now), 3);
   });
 }

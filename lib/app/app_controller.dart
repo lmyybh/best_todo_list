@@ -137,8 +137,10 @@ class AppController extends ChangeNotifier {
     Deadline? deadline,
   ) => _write(_workspace.updateDeadline(nodeId, deadline));
 
-  Future<NodeWriteResult<void>> setCompleted(String nodeId, bool completed) =>
-      _write(_workspace.setLeafCompleted(nodeId, completed));
+  Future<NodeWriteResult<void>> setTaskStatus(
+    String nodeId,
+    TodoNodeStatus status,
+  ) => _write(_workspace.setNodeStatus(nodeId, status));
 
   Future<NodeWriteResult<DeletedSubtree>> delete(String nodeId) => _write(
     _workspace.deleteSubtree(nodeId),

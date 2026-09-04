@@ -1,5 +1,7 @@
 import 'deadline.dart';
 
+enum TodoNodeStatus { active, completed, abandoned }
+
 class TodoNode {
   const TodoNode({
     required this.id,
@@ -11,6 +13,7 @@ class TodoNode {
     this.parentId,
     this.deadline,
     this.completedAt,
+    this.abandonedAt,
     this.deletedAt,
   });
 
@@ -22,10 +25,17 @@ class TodoNode {
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? completedAt;
+  final DateTime? abandonedAt;
   final DateTime? deletedAt;
   final int manualOrder;
 
   bool get isDeleted => deletedAt != null;
+  bool get isAbandoned => abandonedAt != null;
+  TodoNodeStatus get status => abandonedAt != null
+      ? TodoNodeStatus.abandoned
+      : completedAt != null
+      ? TodoNodeStatus.completed
+      : TodoNodeStatus.active;
 
   TodoNode copyWith({
     String? parentId,
@@ -38,6 +48,8 @@ class TodoNode {
     DateTime? updatedAt,
     DateTime? completedAt,
     bool clearCompletedAt = false,
+    DateTime? abandonedAt,
+    bool clearAbandonedAt = false,
     DateTime? deletedAt,
     bool clearDeletedAt = false,
     int? manualOrder,
@@ -51,6 +63,7 @@ class TodoNode {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       completedAt: clearCompletedAt ? null : (completedAt ?? this.completedAt),
+      abandonedAt: clearAbandonedAt ? null : (abandonedAt ?? this.abandonedAt),
       deletedAt: clearDeletedAt ? null : (deletedAt ?? this.deletedAt),
       manualOrder: manualOrder ?? this.manualOrder,
     );
@@ -66,6 +79,7 @@ class TodoNode {
     'created_at': createdAt.toUtc().millisecondsSinceEpoch,
     'updated_at': updatedAt.toUtc().millisecondsSinceEpoch,
     'completed_at': completedAt?.toUtc().millisecondsSinceEpoch,
+    'abandoned_at': abandonedAt?.toUtc().millisecondsSinceEpoch,
     'deleted_at': deletedAt?.toUtc().millisecondsSinceEpoch,
     'manual_order': manualOrder,
   };
@@ -90,6 +104,7 @@ class TodoNode {
       createdAt: nullableDate('created_at')!,
       updatedAt: nullableDate('updated_at')!,
       completedAt: nullableDate('completed_at'),
+      abandonedAt: nullableDate('abandoned_at'),
       deletedAt: nullableDate('deleted_at'),
       manualOrder: map['manual_order']! as int,
     );

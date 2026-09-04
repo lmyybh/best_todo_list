@@ -17,7 +17,7 @@ class UnsupportedDatabaseVersion implements Exception {
 }
 
 class AppDatabase {
-  static const int currentVersion = 4;
+  static const int currentVersion = 5;
 
   static Future<Database> open({String? path}) async {
     sqfliteFfiInit();
@@ -34,11 +34,21 @@ class AppDatabase {
           await _createNodesTable(database);
           await _createNodeIndexes(database);
         },
-        onUpgrade: (_, oldVersion, newVersion) =>
-            throw UnsupportedDatabaseVersion(
-              found: oldVersion,
-              supported: newVersion,
-            ),
+        onUpgrade: (database, oldVersion, newVersion) async {
+          if (oldVersion == 4 && newVersion == 5) {
+            await database.execute(
+              'ALTER TABLE nodes ADD COLUMN abandoned_at INTEGER NULL',
+            );
+            await database.execute(
+              'CREATE INDEX nodes_abandoned_idx ON nodes(abandoned_at, deleted_at)',
+            );
+            return;
+          }
+          throw UnsupportedDatabaseVersion(
+            found: oldVersion,
+            supported: newVersion,
+          );
+        },
       ),
     );
   }
@@ -100,6 +110,7 @@ Future<void> _createNodesTable(DatabaseExecutor database) =>
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     completed_at INTEGER NULL,
+    abandoned_at INTEGER NULL,
     deleted_at INTEGER NULL,
     manual_order INTEGER NOT NULL,
     FOREIGN KEY (parent_id) REFERENCES nodes(id),
@@ -119,6 +130,9 @@ Future<void> _createNodeIndexes(DatabaseExecutor database) async {
   );
   await database.execute(
     'CREATE INDEX nodes_completed_idx ON nodes(completed_at, deleted_at)',
+  );
+  await database.execute(
+    'CREATE INDEX nodes_abandoned_idx ON nodes(abandoned_at, deleted_at)',
   );
   await database.execute(
     'CREATE INDEX nodes_created_idx ON nodes(created_at, deleted_at)',
