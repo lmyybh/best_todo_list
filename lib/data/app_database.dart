@@ -41,11 +41,17 @@ class AppDatabase {
             if (oldVersion < 4) {
               await _migrateLegacyDeadlines(database, oldVersion);
             }
+            final columns = {
+              for (final row in await database.rawQuery('PRAGMA table_info(nodes)'))
+                row['name'] as String,
+            };
+            if (!columns.contains('abandoned_at')) {
+              await database.execute(
+                'ALTER TABLE nodes ADD COLUMN abandoned_at INTEGER NULL',
+              );
+            }
             await database.execute(
-              'ALTER TABLE nodes ADD COLUMN abandoned_at INTEGER NULL',
-            );
-            await database.execute(
-              'CREATE INDEX nodes_abandoned_idx ON nodes(abandoned_at, deleted_at)',
+              'CREATE INDEX IF NOT EXISTS nodes_abandoned_idx ON nodes(abandoned_at, deleted_at)',
             );
             return;
           }
@@ -104,47 +110,59 @@ class AppDatabase {
 }
 
 Future<void> _migrateLegacyDeadlines(Database database, int version) async {
-  if (version < 2) {
+  final columns = {
+    for (final row in await database.rawQuery('PRAGMA table_info(nodes)'))
+      row['name'] as String,
+  };
+  if (version < 2 && !columns.contains('notes')) {
     await database.execute(
       "ALTER TABLE nodes ADD COLUMN notes TEXT NOT NULL DEFAULT ''",
     );
   }
-  await database.execute(
-    'ALTER TABLE nodes ADD COLUMN deadline_date TEXT NULL',
-  );
-  await database.execute(
-    'ALTER TABLE nodes ADD COLUMN deadline_at INTEGER NULL',
-  );
-  for (final row in await database.query('nodes')) {
-    final deadline = row['deadline'] as int?;
-    if (deadline == null) continue;
-    final hasTime = version < 3 || row['deadline_has_time'] == 1;
-    final local = DateTime.fromMillisecondsSinceEpoch(deadline);
-    await database.update(
-      'nodes',
-      hasTime
-          ? <String, Object?>{'deadline_at': deadline}
-          : <String, Object?>{
-              'deadline_date': DateOnlyDeadline(
-                year: local.year,
-                month: local.month,
-                day: local.day,
-              ).storage.date,
-            },
-      where: 'id = ?',
-      whereArgs: <Object?>[row['id']],
+  if (!columns.contains('deadline_date')) {
+    await database.execute(
+      'ALTER TABLE nodes ADD COLUMN deadline_date TEXT NULL',
     );
   }
+  if (!columns.contains('deadline_at')) {
+    await database.execute(
+      'ALTER TABLE nodes ADD COLUMN deadline_at INTEGER NULL',
+    );
+  }
+  if (columns.contains('deadline')) {
+    for (final row in await database.query('nodes')) {
+      final deadline = row['deadline'] as int?;
+      if (deadline == null) continue;
+      final hasTime = version < 3 || row['deadline_has_time'] == 1;
+      final local = DateTime.fromMillisecondsSinceEpoch(deadline);
+      await database.update(
+        'nodes',
+        hasTime
+            ? <String, Object?>{'deadline_at': deadline}
+            : <String, Object?>{
+                'deadline_date': DateOnlyDeadline(
+                  year: local.year,
+                  month: local.month,
+                  day: local.day,
+                ).storage.date,
+              },
+        where: 'id = ?',
+        whereArgs: <Object?>[row['id']],
+      );
+    }
+  }
   await database.execute('DROP INDEX IF EXISTS nodes_deadline_idx');
-  await database.execute('ALTER TABLE nodes DROP COLUMN deadline');
-  if (version >= 3) {
+  if (columns.contains('deadline')) {
+    await database.execute('ALTER TABLE nodes DROP COLUMN deadline');
+  }
+  if (version >= 3 && columns.contains('deadline_has_time')) {
     await database.execute('ALTER TABLE nodes DROP COLUMN deadline_has_time');
   }
   await database.execute(
-    'CREATE INDEX nodes_deadline_date_idx ON nodes(deadline_date, deleted_at)',
+    'CREATE INDEX IF NOT EXISTS nodes_deadline_date_idx ON nodes(deadline_date, deleted_at)',
   );
   await database.execute(
-    'CREATE INDEX nodes_deadline_at_idx ON nodes(deadline_at, deleted_at)',
+    'CREATE INDEX IF NOT EXISTS nodes_deadline_at_idx ON nodes(deadline_at, deleted_at)',
   );
 }
 
