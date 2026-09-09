@@ -34,7 +34,7 @@ void main() {
   });
 
   for (final version in <int>[1, 2, 3]) {
-    test('版本 $version 数据库显式拒绝且原文件与数据保持不变', () async {
+    test('版本 $version 数据库升级后保留任务与精确截止时间', () async {
       final directory = await Directory.systemTemp.createTemp(
         'todo_unsupported_',
       );
@@ -42,24 +42,61 @@ void main() {
       sqfliteFfiInit();
       await _createLegacyDatabase(path, version);
 
-      await expectLater(
-        AppDatabase.open(path: path),
-        throwsA(
-          isA<UnsupportedDatabaseVersion>()
-              .having((error) => error.found, 'found', version)
-              .having((error) => error.supported, 'supported', 5),
-        ),
-      );
-
-      final preserved = await databaseFactoryFfi.openDatabase(path);
+      final preserved = await AppDatabase.open(path: path);
       final versionRows = await preserved.rawQuery('PRAGMA user_version');
-      expect(versionRows.single['user_version'], version);
+      expect(versionRows.single['user_version'], 5);
       expect((await preserved.query('nodes')).single['title'], '已有任务');
+      final node = (await SqliteNodeRepository(preserved).loadNodes()).single;
+      expect(node.notes, '');
+      expect(node.abandonedAt, isNull);
+      expect(
+        (node.deadline! as TimedDeadline).instant,
+        DateTime.utc(2026, 8, 12, 10),
+      );
       await preserved.close();
       expect(await File(path).exists(), isTrue);
       await directory.delete(recursive: true);
     });
   }
+
+  test('版本 3 升级保留日期期限、父子层级和已删除任务', () async {
+    final directory = await Directory.systemTemp.createTemp('todo_v3_tree_');
+    final path = p.join(directory.path, 'test.sqlite');
+    await _createLegacyDatabase(path, 3);
+    final legacy = await databaseFactoryFfi.openDatabase(path);
+    final parent = (await legacy.query('nodes')).single;
+    final date = DateTime(2026, 9, 9);
+    await legacy.insert('nodes', <String, Object?>{
+      ...parent,
+      'id': 'child',
+      'parent_id': parent['id'],
+      'notes': '保留备注',
+      'deadline': date.millisecondsSinceEpoch,
+      'deadline_has_time': 0,
+      'deleted_at': date.millisecondsSinceEpoch,
+    });
+    await legacy.execute(
+      'CREATE INDEX nodes_deadline_idx ON nodes(deadline, deleted_at)',
+    );
+    await legacy.close();
+
+    var database = await AppDatabase.open(path: path);
+    await database.close();
+    database = await AppDatabase.open(path: path);
+    final child = (await database.query(
+      'nodes',
+      where: 'id = ?',
+      whereArgs: <Object?>['child'],
+    )).single;
+    expect(child['parent_id'], 'legacy-node');
+    expect(child['notes'], '保留备注');
+    expect(child['deadline_date'], '2026-09-09');
+    expect(child['deadline_at'], isNull);
+    expect(child['deleted_at'], date.millisecondsSinceEpoch);
+    expect(await database.rawQuery('PRAGMA foreign_key_check'), isEmpty);
+    await database.close();
+    await directory.delete(recursive: true);
+  });
 
   test('版本 4 数据库升级后保留数据并支持放弃状态', () async {
     final directory = await Directory.systemTemp.createTemp('todo_v4_');
