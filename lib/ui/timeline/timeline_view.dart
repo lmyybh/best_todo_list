@@ -4,7 +4,8 @@ import 'package:flutter/services.dart';
 import '../../app/app_controller.dart';
 import '../../app/app_theme.dart';
 import '../../domain/timeline.dart';
-import '../common/node_tile.dart';
+import '../../domain/todo_node.dart';
+import '../common/formatters.dart';
 
 class TimelineView extends StatelessWidget {
   const TimelineView({required this.controller, super.key});
@@ -18,6 +19,25 @@ class TimelineView extends StatelessWidget {
     final regular = projection.regular;
     final completed = projection.completed;
     final abandoned = projection.abandoned;
+    final treeEntries = <TimelineTreeEntry>[
+      ...projection.overdueTree,
+      ...projection.regularTree,
+    ];
+    final expandableEntries = treeEntries
+        .where(
+          (entry) =>
+              entry.entry.isEvent &&
+              entry.matchingCount > (entry.isContext ? 0 : 1),
+        )
+        .toList();
+    final allExpanded =
+        expandableEntries.isNotEmpty &&
+        expandableEntries.every(
+          (entry) => controller.isTimelineExpanded(
+            entry.entry.node.id,
+            isRoot: entry.depth == 0,
+          ),
+        );
 
     return Focus(
       autofocus: true,
@@ -39,7 +59,14 @@ class TimelineView extends StatelessWidget {
           child: Column(
             children: <Widget>[
               _DateNavigator(controller: controller, projection: projection),
-              _TimelineContext(projection: projection),
+              _TimelineContext(
+                projection: projection,
+                hasHierarchy: expandableEntries.isNotEmpty,
+                allExpanded: allExpanded,
+                onToggleAll: () => allExpanded
+                    ? controller.collapseTimelineTrees(treeEntries)
+                    : controller.expandTimelineTrees(treeEntries),
+              ),
               Expanded(
                 child:
                     overdue.isEmpty &&
@@ -58,26 +85,30 @@ class TimelineView extends StatelessWidget {
                               danger: true,
                             ),
                             const SizedBox(height: 10),
-                            ...overdue.map(
-                              (entry) =>
-                                  _Entry(controller: controller, entry: entry),
+                            _TimelineTreeList(
+                              controller: controller,
+                              entries: projection.overdueTree,
                             ),
-                            const SizedBox(height: 20),
                           ],
-                          _TimelineSection(
-                            title: projection.laterSelected
-                                ? '更晚'
-                                : _relativeDateLabel(
-                                    projection.selectedDate,
-                                    projection.now,
-                                  ),
-                            count: regular.length,
-                          ),
-                          const SizedBox(height: 10),
-                          ...regular.map(
-                            (entry) =>
-                                _Entry(controller: controller, entry: entry),
-                          ),
+                          if (regular.isNotEmpty ||
+                              projection.laterSelected) ...<Widget>[
+                            if (overdue.isNotEmpty) const SizedBox(height: 20),
+                            _TimelineSection(
+                              title: projection.laterSelected
+                                  ? '更晚'
+                                  : _relativeDateLabel(
+                                      projection.selectedDate,
+                                      projection.now,
+                                    ),
+                              count: regular.length,
+                            ),
+                            const SizedBox(height: 10),
+                            _TimelineTreeList(
+                              controller: controller,
+                              entries: projection.regularTree,
+                            ),
+                          ] else if (overdue.isEmpty)
+                            _TimelineOpenEmpty(completed: completed.isNotEmpty),
                           if (completed.isNotEmpty) ...<Widget>[
                             const SizedBox(height: 20),
                             _TimelineSection(
@@ -85,9 +116,10 @@ class TimelineView extends StatelessWidget {
                               count: completed.length,
                             ),
                             const SizedBox(height: 10),
-                            ...completed.map(
-                              (entry) =>
-                                  _Entry(controller: controller, entry: entry),
+                            _TimelineActivityList(
+                              controller: controller,
+                              entries: completed,
+                              kind: _ActivityKind.completed,
                             ),
                           ],
                           if (abandoned.isNotEmpty) ...<Widget>[
@@ -97,9 +129,10 @@ class TimelineView extends StatelessWidget {
                               count: abandoned.length,
                             ),
                             const SizedBox(height: 10),
-                            ...abandoned.map(
-                              (entry) =>
-                                  _Entry(controller: controller, entry: entry),
+                            _TimelineActivityList(
+                              controller: controller,
+                              entries: abandoned,
+                              kind: _ActivityKind.abandoned,
                             ),
                           ],
                         ],
@@ -141,7 +174,7 @@ class _DateNavigator extends StatelessWidget {
                 const SizedBox(width: 9),
                 Text(
                   '第 ${_isoWeek(start)} 周',
-                  style: TextStyle(color: colors.faint, fontSize: 9),
+                  style: TextStyle(color: colors.muted, fontSize: 11),
                 ),
                 const Spacer(),
                 _NavigatorButton(
@@ -153,7 +186,7 @@ class _DateNavigator extends StatelessWidget {
                 TextButton(
                   key: const ValueKey<String>('timeline-today'),
                   onPressed: controller.resetTimelineToToday,
-                  child: const Text('回到今天', style: TextStyle(fontSize: 10)),
+                  child: const Text('回到今天', style: TextStyle(fontSize: 11)),
                 ),
                 _NavigatorButton(
                   key: const ValueKey<String>('timeline-next-week'),
@@ -176,7 +209,8 @@ class _DateNavigator extends StatelessWidget {
                     child: _DateButton(
                       date: date,
                       now: projection.now,
-                      count: projection.countFor(date),
+                      openCount: projection.countFor(date),
+                      completedCount: projection.completedCountFor(date),
                       selected:
                           !projection.laterSelected &&
                           _sameDate(date, projection.selectedDate),
@@ -203,14 +237,16 @@ class _DateButton extends StatelessWidget {
   const _DateButton({
     required this.date,
     required this.now,
-    required this.count,
+    required this.openCount,
+    required this.completedCount,
     required this.selected,
     required this.onPressed,
   });
 
   final DateTime date;
   final DateTime now;
-  final int count;
+  final int openCount;
+  final int completedCount;
   final bool selected;
   final VoidCallback onPressed;
 
@@ -223,7 +259,7 @@ class _DateButton extends StatelessWidget {
       children: <Widget>[
         Text(
           _relativeDateLabel(date, now),
-          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600),
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 2),
         Text(
@@ -231,8 +267,15 @@ class _DateButton extends StatelessWidget {
           style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
         ),
         Text(
-          count == 0 ? '无任务' : '$count 项',
-          style: TextStyle(color: AppColors.of(context).faint, fontSize: 8),
+          completedCount == 0
+              ? openCount == 0
+                    ? '无待办'
+                    : '$openCount 待办'
+              : '$openCount待办 · $completedCount完成',
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.fade,
+          style: TextStyle(color: AppColors.of(context).muted, fontSize: 12),
         ),
       ],
     ),
@@ -260,14 +303,14 @@ class _LaterButton extends StatelessWidget {
       children: <Widget>[
         const Text(
           '更晚',
-          style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600),
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 4),
         const Icon(Icons.calendar_month_outlined, size: 15),
         const SizedBox(height: 3),
         Text(
-          '$count 项',
-          style: TextStyle(color: AppColors.of(context).faint, fontSize: 8),
+          '$count 待办',
+          style: TextStyle(color: AppColors.of(context).muted, fontSize: 10),
         ),
       ],
     ),
@@ -319,21 +362,45 @@ class _DateSurface extends StatelessWidget {
 }
 
 class _TimelineContext extends StatelessWidget {
-  const _TimelineContext({required this.projection});
+  const _TimelineContext({
+    required this.projection,
+    required this.hasHierarchy,
+    required this.allExpanded,
+    required this.onToggleAll,
+  });
 
   final TimelineProjection projection;
+  final bool hasHierarchy;
+  final bool allExpanded;
+  final VoidCallback onToggleAll;
 
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(30, 14, 30, 8),
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        projection.laterSelected
-            ? '更晚的任务'
-            : '${projection.selectedDate.month} 月 ${projection.selectedDate.day} 日',
-        style: TextStyle(color: AppColors.of(context).muted, fontSize: 10),
-      ),
+    child: Row(
+      children: <Widget>[
+        Text(
+          projection.laterSelected
+              ? '更晚的任务'
+              : '${projection.selectedDate.month} 月 ${projection.selectedDate.day} 日',
+          style: TextStyle(color: AppColors.of(context).muted, fontSize: 10),
+        ),
+        const Spacer(),
+        if (hasHierarchy)
+          TextButton.icon(
+            key: const ValueKey<String>('timeline-toggle-all'),
+            onPressed: onToggleAll,
+            icon: Icon(
+              allExpanded ? Icons.unfold_less : Icons.unfold_more,
+              size: 15,
+            ),
+            label: Text(allExpanded ? '折叠全部' : '展开全部'),
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              textStyle: const TextStyle(fontSize: 11),
+            ),
+          ),
+      ],
     ),
   );
 }
@@ -359,32 +426,563 @@ class _NavigatorButton extends StatelessWidget {
   );
 }
 
-class _Entry extends StatelessWidget {
-  const _Entry({required this.controller, required this.entry});
+enum _ActivityKind { completed, abandoned }
+
+class _TimelineActivityList extends StatelessWidget {
+  const _TimelineActivityList({
+    required this.controller,
+    required this.entries,
+    required this.kind,
+  });
+
   final AppController controller;
-  final TimelineEntry entry;
+  final List<TimelineEntry> entries;
+  final _ActivityKind kind;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 7),
-    child: Opacity(
-      opacity: entry.isComplete ? 0.65 : 1,
-      child: NodeTile(
-        node: entry.node,
-        tree: controller.tree,
-        now: controller.now,
-        path: entry.path.length > 1
-            ? entry.path.sublist(0, entry.path.length - 1).join(' / ')
-            : '顶层事件',
-        onOpen: () {
-          controller.select(entry.node.id);
-          controller.setView(AppView.events);
-        },
-        onStatusChanged: (status) =>
-            controller.setTaskStatus(entry.node.id, status),
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: colors.borderSoft),
       ),
-    ),
-  );
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: <Widget>[
+          for (var index = 0; index < entries.length; index++) ...<Widget>[
+            if (index > 0)
+              Divider(
+                height: 1,
+                indent: 14,
+                endIndent: 14,
+                color: colors.borderSoft,
+              ),
+            _TimelineActivityRow(
+              controller: controller,
+              entry: entries[index],
+              kind: kind,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TimelineActivityRow extends StatefulWidget {
+  const _TimelineActivityRow({
+    required this.controller,
+    required this.entry,
+    required this.kind,
+  });
+
+  final AppController controller;
+  final TimelineEntry entry;
+  final _ActivityKind kind;
+
+  @override
+  State<_TimelineActivityRow> createState() => _TimelineActivityRowState();
+}
+
+class _TimelineActivityRowState extends State<_TimelineActivityRow> {
+  var _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+    final entry = widget.entry;
+    final node = entry.node;
+    final completed = widget.kind == _ActivityKind.completed;
+    final occurredAt = completed ? entry.completedAt! : node.abandonedAt!;
+    final colors = AppColors.of(context);
+    final path = entry.path.length > 1
+        ? entry.path.sublist(0, entry.path.length - 1).join(' / ')
+        : '顶层事件';
+
+    void openNode() {
+      controller.select(node.id);
+      controller.setView(AppView.events);
+    }
+
+    return Semantics(
+      key: ValueKey<String>('timeline-activity-${node.id}'),
+      button: true,
+      label: '${completed ? '已完成' : '已放弃'}：${node.title}',
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: Material(
+          color: _hovered ? colors.surfaceHover : Colors.transparent,
+          animationDuration: const Duration(milliseconds: 150),
+          child: InkWell(
+            onTap: openNode,
+            hoverColor: Colors.transparent,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 52),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 7, 14, 7),
+                child: Row(
+                  children: <Widget>[
+                    if (completed)
+                      IconButton(
+                        tooltip: '取消完成',
+                        onPressed: () => controller.setTaskStatus(
+                          node.id,
+                          TodoNodeStatus.active,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 24,
+                          height: 24,
+                        ),
+                        padding: EdgeInsets.zero,
+                        icon: Icon(
+                          Icons.check_circle,
+                          size: 18,
+                          color: colors.completion,
+                        ),
+                      )
+                    else
+                      IconButton(
+                        tooltip: '取消放弃',
+                        onPressed: () => controller.setTaskStatus(
+                          node.id,
+                          TodoNodeStatus.active,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 24,
+                          height: 24,
+                        ),
+                        padding: EdgeInsets.zero,
+                        icon: Icon(
+                          Icons.block_outlined,
+                          size: 18,
+                          color: colors.muted,
+                        ),
+                      ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Text(
+                            node.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: completed
+                                  ? Theme.of(context).colorScheme.onSurface
+                                  : colors.muted,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              decoration: completed
+                                  ? null
+                                  : TextDecoration.lineThrough,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            path,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: colors.muted, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Text(
+                          '${formatTime(occurredAt)} ${completed ? '完成' : '放弃'}',
+                          style: TextStyle(
+                            color: completed ? colors.completion : colors.muted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (node.deadline != null) ...<Widget>[
+                          const SizedBox(height: 2),
+                          Text(
+                            '原定 ${formatDeadline(node.deadline)}',
+                            style: TextStyle(color: colors.muted, fontSize: 10),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TimelineTreeList extends StatelessWidget {
+  const _TimelineTreeList({required this.controller, required this.entries});
+
+  final AppController controller;
+  final List<TimelineTreeEntry> entries;
+
+  bool _isVisible(TimelineTreeEntry entry) {
+    for (var index = 0; index < entry.ancestorIds.length; index++) {
+      if (!controller.isTimelineExpanded(
+        entry.ancestorIds[index],
+        isRoot: index == 0,
+      )) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = <List<TimelineTreeEntry>>[];
+    for (final entry in entries) {
+      if (entry.depth == 0 || groups.isEmpty) {
+        groups.add(<TimelineTreeEntry>[]);
+      }
+      groups.last.add(entry);
+    }
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 180),
+      alignment: Alignment.topCenter,
+      curve: Curves.easeOutCubic,
+      child: Column(
+        children: <Widget>[
+          for (final group in groups)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _TimelineTreeGroup(
+                controller: controller,
+                entries: group.where(_isVisible).toList(),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimelineTreeGroup extends StatelessWidget {
+  const _TimelineTreeGroup({required this.controller, required this.entries});
+
+  final AppController controller;
+  final List<TimelineTreeEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: colors.borderSoft),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: <Widget>[
+          for (var index = 0; index < entries.length; index++) ...<Widget>[
+            if (index > 0)
+              Divider(
+                height: 1,
+                indent: 14,
+                endIndent: 14,
+                color: colors.borderSoft,
+              ),
+            _TimelineTreeRow(controller: controller, treeEntry: entries[index]),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TimelineTreeRow extends StatefulWidget {
+  const _TimelineTreeRow({required this.controller, required this.treeEntry});
+
+  final AppController controller;
+  final TimelineTreeEntry treeEntry;
+
+  @override
+  State<_TimelineTreeRow> createState() => _TimelineTreeRowState();
+}
+
+class _TimelineTreeRowState extends State<_TimelineTreeRow> {
+  var _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+    final treeEntry = widget.treeEntry;
+    final entry = treeEntry.entry;
+    final node = entry.node;
+    final colors = AppColors.of(context);
+    final tree = controller.tree;
+    final isEvent = entry.isEvent;
+    final complete = entry.isComplete;
+    final abandoned = node.isAbandoned;
+    final leaves = isEvent
+        ? tree.actionableLeafDescendantsOf(node.id)
+        : const <TodoNode>[];
+    final completedCount = leaves
+        .where((leaf) => leaf.completedAt != null)
+        .length;
+    final hasShownChildren =
+        isEvent && treeEntry.matchingCount > (treeEntry.isContext ? 0 : 1);
+    final expanded =
+        hasShownChildren &&
+        controller.isTimelineExpanded(node.id, isRoot: treeEntry.depth == 0);
+    final overdue =
+        (node.deadline?.isOverdue(controller.now) ?? false) && !complete;
+    final visualDepth = treeEntry.depth > 5 ? 5 : treeEntry.depth;
+    final rowColor = _hovered
+        ? colors.surfaceHover
+        : isEvent
+        ? colors.accentSoft.withValues(alpha: 0.3)
+        : Colors.transparent;
+
+    void openNode() {
+      controller.select(node.id);
+      controller.setView(AppView.events);
+    }
+
+    return Focus(
+      onKeyEvent: (_, event) {
+        if (event is! KeyDownEvent || !hasShownChildren) {
+          return KeyEventResult.ignored;
+        }
+        if (event.logicalKey == LogicalKeyboardKey.arrowRight && !expanded ||
+            event.logicalKey == LogicalKeyboardKey.arrowLeft && expanded) {
+          controller.toggleTimelineExpanded(
+            node.id,
+            isRoot: treeEntry.depth == 0,
+          );
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Semantics(
+        key: ValueKey<String>('timeline-row-${node.id}'),
+        button: true,
+        label: '${isEvent ? '事件' : '任务'}：${node.title}',
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() => _hovered = false),
+          child: Material(
+            color: rowColor,
+            animationDuration: const Duration(milliseconds: 150),
+            child: InkWell(
+              onTap: openNode,
+              hoverColor: Colors.transparent,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: isEvent ? 50 : 44),
+                child: Stack(
+                  children: <Widget>[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
+                      child: Row(
+                        children: <Widget>[
+                          if (visualDepth > 0)
+                            CustomPaint(
+                              size: Size(visualDepth * 18.0, 32),
+                              painter: _TreeLinesPainter(
+                                depth: visualDepth,
+                                color: colors.border,
+                              ),
+                            ),
+                          if (isEvent && hasShownChildren)
+                            IconButton(
+                              key: ValueKey<String>(
+                                'timeline-expand-${node.id}',
+                              ),
+                              tooltip: expanded ? '折叠子任务' : '展开子任务',
+                              onPressed: () =>
+                                  controller.toggleTimelineExpanded(
+                                    node.id,
+                                    isRoot: treeEntry.depth == 0,
+                                  ),
+                              icon: Icon(
+                                expanded
+                                    ? Icons.keyboard_arrow_down
+                                    : Icons.keyboard_arrow_right,
+                                size: 18,
+                              ),
+                              visualDensity: VisualDensity.compact,
+                              constraints: const BoxConstraints.tightFor(
+                                width: 28,
+                                height: 28,
+                              ),
+                              padding: EdgeInsets.zero,
+                            )
+                          else
+                            const SizedBox(width: 28),
+                          if (abandoned)
+                            IconButton(
+                              tooltip: '取消放弃',
+                              onPressed: () => controller.setTaskStatus(
+                                node.id,
+                                TodoNodeStatus.active,
+                              ),
+                              visualDensity: VisualDensity.compact,
+                              constraints: const BoxConstraints.tightFor(
+                                width: 28,
+                                height: 28,
+                              ),
+                              padding: EdgeInsets.zero,
+                              icon: Icon(
+                                Icons.block_outlined,
+                                size: 18,
+                                color: colors.muted,
+                              ),
+                            )
+                          else if (isEvent)
+                            const SizedBox(width: 28)
+                          else
+                            SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: Checkbox.adaptive(
+                                value: complete,
+                                onChanged: (value) => controller.setTaskStatus(
+                                  node.id,
+                                  value ?? false
+                                      ? TodoNodeStatus.completed
+                                      : TodoNodeStatus.active,
+                                ),
+                                shape: const CircleBorder(),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                          const SizedBox(width: 9),
+                          Expanded(
+                            child: Tooltip(
+                              message: entry.path.join(' / '),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: <Widget>[
+                                  Text(
+                                    node.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: isEvent
+                                          ? FontWeight.w600
+                                          : FontWeight.w500,
+                                      decoration: complete || abandoned
+                                          ? TextDecoration.lineThrough
+                                          : null,
+                                      color: complete || abandoned
+                                          ? colors.muted
+                                          : Theme.of(
+                                              context,
+                                            ).colorScheme.onSurface,
+                                    ),
+                                  ),
+                                  if (isEvent) ...<Widget>[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${treeEntry.matchingCount} 项相关 · '
+                                      '$completedCount/${leaves.length} 已完成'
+                                      '${treeEntry.depth > 5 ? ' · 第 ${treeEntry.depth + 1} 层' : ''}',
+                                      style: TextStyle(
+                                        color: colors.muted,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                          if (node.deadline != null) ...<Widget>[
+                            const SizedBox(width: 12),
+                            Text(
+                              formatDeadline(node.deadline),
+                              style: TextStyle(
+                                color: overdue
+                                    ? colors.danger
+                                    : Theme.of(context).colorScheme.primary,
+                                fontSize: 11,
+                                fontWeight: overdue
+                                    ? FontWeight.w600
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(width: 4),
+                          AnimatedOpacity(
+                            duration: const Duration(milliseconds: 150),
+                            opacity: _hovered ? 1 : 0,
+                            child: Icon(
+                              Icons.chevron_right,
+                              size: 16,
+                              color: colors.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (overdue)
+                      Positioned(
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        width: 3,
+                        child: ColoredBox(color: colors.danger),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TreeLinesPainter extends CustomPainter {
+  const _TreeLinesPainter({required this.depth, required this.color});
+
+  final int depth;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1;
+    for (var level = 0; level < depth; level++) {
+      final x = level * 18.0 + 9;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    final branchX = (depth - 1) * 18.0 + 9;
+    canvas.drawLine(
+      Offset(branchX, size.height / 2),
+      Offset(size.width, size.height / 2),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _TreeLinesPainter oldDelegate) =>
+      oldDelegate.depth != depth || oldDelegate.color != color;
 }
 
 class _TimelineSection extends StatelessWidget {
@@ -415,6 +1013,49 @@ class _TimelineSection extends StatelessWidget {
       ),
     ],
   );
+}
+
+class _TimelineOpenEmpty extends StatelessWidget {
+  const _TimelineOpenEmpty({required this.completed});
+
+  final bool completed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    return Semantics(
+      key: const ValueKey<String>('timeline-open-empty'),
+      label: completed ? '今天的待办已全部完成' : '这一天没有待办',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: completed
+              ? colors.accentSoft.withValues(alpha: 0.42)
+              : Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: colors.borderSoft),
+        ),
+        child: Row(
+          children: <Widget>[
+            Icon(
+              completed ? Icons.check_circle_outline : Icons.event_available,
+              size: 18,
+              color: completed ? colors.completion : colors.muted,
+            ),
+            const SizedBox(width: 9),
+            Text(
+              completed ? '今天的待办已全部完成' : '这一天没有待办',
+              style: TextStyle(
+                color: completed ? colors.completion : colors.muted,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _TimelineEmpty extends StatelessWidget {

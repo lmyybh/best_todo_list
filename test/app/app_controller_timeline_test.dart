@@ -15,7 +15,7 @@ void main() {
     addTearDown(controller.dispose);
 
     expect(controller.timelineProjection.windowStart, DateTime(2026, 8, 10));
-    expect(controller.timelineProjection.dates.last, DateTime(2026, 8, 15));
+    expect(controller.timelineProjection.dates.last, DateTime(2026, 8, 16));
     controller.shiftTimelineWindow(1);
     expect(controller.timelineProjection.windowStart, DateTime(2026, 8, 17));
     expect(controller.timelineProjection.selectedDate, DateTime(2026, 8, 17));

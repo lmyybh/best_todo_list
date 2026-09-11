@@ -29,6 +29,8 @@ class AppController extends ChangeNotifier {
 
   AppView view = AppView.events;
   final Set<String> expandedIds = <String>{};
+  final Set<String> timelineExpandedIds = <String>{};
+  final Set<String> timelineCollapsedRootIds = <String>{};
 
   List<TodoNode> get nodes => _workspace.nodes;
   NodeTree get tree => _workspace.tree;
@@ -107,6 +109,36 @@ class AppController extends ChangeNotifier {
 
   void toggleExpanded(String nodeId) {
     if (!expandedIds.add(nodeId)) expandedIds.remove(nodeId);
+    notifyListeners();
+  }
+
+  bool isTimelineExpanded(String nodeId, {required bool isRoot}) => isRoot
+      ? !timelineCollapsedRootIds.contains(nodeId)
+      : timelineExpandedIds.contains(nodeId);
+
+  void toggleTimelineExpanded(String nodeId, {required bool isRoot}) {
+    final ids = isRoot ? timelineCollapsedRootIds : timelineExpandedIds;
+    if (!ids.add(nodeId)) ids.remove(nodeId);
+    notifyListeners();
+  }
+
+  void expandTimelineTrees(Iterable<TimelineTreeEntry> entries) {
+    timelineCollapsedRootIds.clear();
+    timelineExpandedIds.addAll(
+      entries
+          .where((entry) => entry.depth > 0 && entry.entry.isEvent)
+          .map((entry) => entry.entry.node.id),
+    );
+    notifyListeners();
+  }
+
+  void collapseTimelineTrees(Iterable<TimelineTreeEntry> entries) {
+    timelineCollapsedRootIds.addAll(
+      entries
+          .where((entry) => entry.depth == 0 && entry.entry.isEvent)
+          .map((entry) => entry.entry.node.id),
+    );
+    timelineExpandedIds.clear();
     notifyListeners();
   }
 

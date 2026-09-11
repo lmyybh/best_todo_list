@@ -41,14 +41,14 @@ void main() {
     final timeline = TimelineExperience(DateTime(2026, 8, 13, 9));
 
     expect(timeline.windowStart, DateTime(2026, 8, 10));
-    expect(timeline.dates.last, DateTime(2026, 8, 15));
+    expect(timeline.dates.last, DateTime(2026, 8, 16));
 
     timeline.shiftWindow(1);
     expect(timeline.selectedDate, DateTime(2026, 8, 17));
     timeline.selectLater();
     expect(timeline.laterSelected, isTrue);
     timeline.moveSelection(-1);
-    expect(timeline.selectedDate, DateTime(2026, 8, 22));
+    expect(timeline.selectedDate, DateTime(2026, 8, 23));
     timeline.resetToToday();
     expect(timeline.selectedDate, DateTime(2026, 8, 13));
 
@@ -74,8 +74,37 @@ void main() {
 
     expect(projection.overdue.map((entry) => entry.node.id), ['overdue']);
     expect(projection.regular.map((entry) => entry.node.id), ['today']);
-    expect(projection.countFor(now), 1);
+    expect(projection.countFor(now), 2);
     expect(projection.laterCount, 2);
+  });
+
+  test('时间线树为当天任务补齐祖先并保留层级', () {
+    final tree = NodeTree(<TodoNode>[
+      node('root'),
+      node('phase', parentId: 'root'),
+      node(
+        'today-child',
+        parentId: 'phase',
+        deadline: DateTime(2026, 8, 11, 18),
+      ),
+      node(
+        'tomorrow-child',
+        parentId: 'phase',
+        deadline: DateTime(2026, 8, 12, 9),
+      ),
+    ]);
+
+    final result = projectionFor(tree).regularTree;
+
+    expect(result.map((entry) => entry.entry.node.id), <String>[
+      'root',
+      'phase',
+      'today-child',
+    ]);
+    expect(result.map((entry) => entry.depth), <int>[0, 1, 2]);
+    expect(result.map((entry) => entry.isContext), <bool>[true, true, false]);
+    expect(result.map((entry) => entry.matchingCount), <int>[1, 1, 1]);
+    expect(result.last.ancestorIds, <String>['root', 'phase']);
   });
 
   test('今天可以包含逾期并将逾期置顶', () {
@@ -152,7 +181,8 @@ void main() {
     expect(projection.regular, isEmpty);
     expect(projection.completed, isEmpty);
     expect(projection.abandoned.map((entry) => entry.node.id), ['new', 'old']);
-    expect(projection.countFor(now), 2);
+    expect(projection.countFor(now), 0);
+    expect(projection.abandonedCountFor(now), 2);
   });
 
   test('放弃事件后后代不再进入待办且只归档事件本身', () {
@@ -179,8 +209,8 @@ void main() {
 
   test('更晚查询包含窗口之后和无日期任务', () {
     final tree = NodeTree(<TodoNode>[
-      node('inside', deadline: DateTime(2026, 8, 15)),
-      node('later', deadline: DateTime(2026, 8, 16)),
+      node('inside', deadline: DateTime(2026, 8, 16)),
+      node('later', deadline: DateTime(2026, 8, 17)),
       node('none'),
     ]);
     final result = projectionFor(tree, later: true).regular;
@@ -200,7 +230,7 @@ void main() {
     expect(result.map((entry) => entry.node.id), <String>['a', 'b']);
   });
 
-  test('按日计数包含当天到期、当天完成和当天放弃的任务', () {
+  test('按日计数分别给出待办、完成和放弃数量', () {
     final tree = NodeTree(<TodoNode>[
       node('open', deadline: DateTime(2026, 8, 11, 9)),
       node(
@@ -210,6 +240,9 @@ void main() {
       ),
       node('abandoned', abandonedAt: DateTime.utc(2026, 8, 11, 11)),
     ]);
-    expect(projectionFor(tree).countFor(now), 3);
+    final projection = projectionFor(tree);
+    expect(projection.countFor(now), 1);
+    expect(projection.completedCountFor(now), 1);
+    expect(projection.abandonedCountFor(now), 1);
   });
 }

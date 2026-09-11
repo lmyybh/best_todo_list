@@ -40,6 +40,7 @@ void main() {
     expect(find.text('2026 年 8 月'), findsOneWidget);
     expect(find.text('今天'), findsWidgets);
     expect(find.text('明天'), findsOneWidget);
+    expect(find.text('周日'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('timeline-later')),
       findsOneWidget,

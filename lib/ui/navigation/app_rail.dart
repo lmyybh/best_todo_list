@@ -39,8 +39,8 @@ class AppRail extends StatelessWidget {
               const SizedBox(height: 6),
               _RailButton(
                 key: const ValueKey<String>('timeline-navigation'),
-                label: '时间线',
-                icon: Icons.timeline_outlined,
+                label: '日程',
+                icon: Icons.calendar_today_outlined,
                 selected: controller.view == AppView.timeline,
                 onPressed: () => controller.setView(AppView.timeline),
               ),

@@ -17,6 +17,22 @@ class TimelineEntry {
   final DateTime? completedAt;
 }
 
+class TimelineTreeEntry {
+  const TimelineTreeEntry({
+    required this.entry,
+    required this.depth,
+    required this.ancestorIds,
+    required this.isContext,
+    required this.matchingCount,
+  });
+
+  final TimelineEntry entry;
+  final int depth;
+  final List<String> ancestorIds;
+  final bool isContext;
+  final int matchingCount;
+}
+
 class TimelineExperience {
   TimelineExperience(DateTime now)
     : _now = now,
@@ -34,7 +50,7 @@ class TimelineExperience {
   DateTime get windowStart => _windowStart;
   bool get laterSelected => _laterSelected;
   List<DateTime> get dates => List<DateTime>.generate(
-    6,
+    7,
     (index) => _windowStart.add(Duration(days: index)),
   );
 
@@ -110,21 +126,35 @@ class TimelineExperience {
               .toList()
         : const <TimelineEntry>[];
     final overdueIds = overdue.map((entry) => entry.node.id).toSet();
+    final regular = overdueIds.isEmpty
+        ? selectedEntries
+        : selectedEntries
+              .where((entry) => !overdueIds.contains(entry.node.id))
+              .toList();
     return TimelineProjection._(
       now: _now,
       selectedDate: _selectedDate,
       windowStart: _windowStart,
       laterSelected: _laterSelected,
       dates: visibleDates,
-      counts: <DateTime, int>{
-        for (final date in visibleDates) date: query.countForDate(tree, date),
+      openCounts: <DateTime, int>{
+        for (final date in visibleDates)
+          date: query
+              .entriesForDate(tree, date, includeOverdue: _sameDate(date, _now))
+              .length,
+      },
+      completedCounts: <DateTime, int>{
+        for (final date in visibleDates)
+          date: query.completedEntriesForDate(tree, date).length,
+      },
+      abandonedCounts: <DateTime, int>{
+        for (final date in visibleDates)
+          date: query.abandonedEntriesForDate(tree, date).length,
       },
       overdue: overdue,
-      regular: overdueIds.isEmpty
-          ? selectedEntries
-          : selectedEntries
-                .where((entry) => !overdueIds.contains(entry.node.id))
-                .toList(),
+      overdueTree: query.treeEntries(tree, overdue),
+      regular: regular,
+      regularTree: query.treeEntries(tree, regular),
       completed: completed,
       abandoned: abandoned,
       laterCount: laterEntries.length,
@@ -148,16 +178,24 @@ class TimelineProjection {
     required this.windowStart,
     required this.laterSelected,
     required List<DateTime> dates,
-    required Map<DateTime, int> counts,
+    required Map<DateTime, int> openCounts,
+    required Map<DateTime, int> completedCounts,
+    required Map<DateTime, int> abandonedCounts,
     required List<TimelineEntry> overdue,
+    required List<TimelineTreeEntry> overdueTree,
     required List<TimelineEntry> regular,
+    required List<TimelineTreeEntry> regularTree,
     required List<TimelineEntry> completed,
     required List<TimelineEntry> abandoned,
     required this.laterCount,
   }) : dates = List<DateTime>.unmodifiable(dates),
-       _counts = Map<DateTime, int>.unmodifiable(counts),
+       _openCounts = Map<DateTime, int>.unmodifiable(openCounts),
+       _completedCounts = Map<DateTime, int>.unmodifiable(completedCounts),
+       _abandonedCounts = Map<DateTime, int>.unmodifiable(abandonedCounts),
        overdue = List<TimelineEntry>.unmodifiable(overdue),
+       overdueTree = List<TimelineTreeEntry>.unmodifiable(overdueTree),
        regular = List<TimelineEntry>.unmodifiable(regular),
+       regularTree = List<TimelineTreeEntry>.unmodifiable(regularTree),
        completed = List<TimelineEntry>.unmodifiable(completed),
        abandoned = List<TimelineEntry>.unmodifiable(abandoned);
 
@@ -166,15 +204,25 @@ class TimelineProjection {
   final DateTime windowStart;
   final bool laterSelected;
   final List<DateTime> dates;
-  final Map<DateTime, int> _counts;
+  final Map<DateTime, int> _openCounts;
+  final Map<DateTime, int> _completedCounts;
+  final Map<DateTime, int> _abandonedCounts;
   final List<TimelineEntry> overdue;
+  final List<TimelineTreeEntry> overdueTree;
   final List<TimelineEntry> regular;
+  final List<TimelineTreeEntry> regularTree;
   final List<TimelineEntry> completed;
   final List<TimelineEntry> abandoned;
   final int laterCount;
 
   int countFor(DateTime date) =>
-      _counts[DateTime(date.year, date.month, date.day)] ?? 0;
+      _openCounts[DateTime(date.year, date.month, date.day)] ?? 0;
+
+  int completedCountFor(DateTime date) =>
+      _completedCounts[DateTime(date.year, date.month, date.day)] ?? 0;
+
+  int abandonedCountFor(DateTime date) =>
+      _abandonedCounts[DateTime(date.year, date.month, date.day)] ?? 0;
 }
 
 class _TimelineQuery {
@@ -236,11 +284,6 @@ class _TimelineQuery {
     return result;
   }
 
-  int countForDate(NodeTree tree, DateTime date) =>
-      entriesForDate(tree, date).length +
-      completedEntriesForDate(tree, date).length +
-      abandonedEntriesForDate(tree, date).length;
-
   List<TimelineEntry> _openEntries(NodeTree tree) => tree.nodes.values
       .where((node) => tree.isLeaf(node.id) || node.deadline != null)
       .map((node) => _entryFor(tree, node))
@@ -257,6 +300,54 @@ class _TimelineQuery {
     isComplete: tree.isComplete(node.id),
     completedAt: tree.effectiveCompletedAt(node.id),
   );
+
+  List<TimelineTreeEntry> treeEntries(
+    NodeTree tree,
+    List<TimelineEntry> matches,
+  ) {
+    if (matches.isEmpty) return const <TimelineTreeEntry>[];
+    final matchingIds = matches.map((entry) => entry.node.id).toSet();
+    final includedIds = <String>{...matchingIds};
+    final roots = <String>[];
+    for (final match in matches) {
+      var current = match.node;
+      while (current.parentId != null) {
+        includedIds.add(current.parentId!);
+        current = tree.nodes[current.parentId!]!;
+      }
+      if (!roots.contains(current.id)) roots.add(current.id);
+    }
+
+    int matchingCount(String nodeId) =>
+        (matchingIds.contains(nodeId) ? 1 : 0) +
+        tree
+            .descendantsOf(nodeId)
+            .where((node) => matchingIds.contains(node.id))
+            .length;
+
+    final result = <TimelineTreeEntry>[];
+    void append(String nodeId, List<String> ancestorIds) {
+      if (!includedIds.contains(nodeId)) return;
+      final node = tree.nodes[nodeId]!;
+      result.add(
+        TimelineTreeEntry(
+          entry: _entryFor(tree, node),
+          depth: ancestorIds.length,
+          ancestorIds: List<String>.unmodifiable(ancestorIds),
+          isContext: !matchingIds.contains(nodeId),
+          matchingCount: matchingCount(nodeId),
+        ),
+      );
+      for (final child in tree.childrenOf(nodeId)) {
+        append(child.id, <String>[...ancestorIds, nodeId]);
+      }
+    }
+
+    for (final rootId in roots) {
+      append(rootId, const <String>[]);
+    }
+    return result;
+  }
 
   void _sortEntries(List<TimelineEntry> entries, {DateTime? overdueBefore}) {
     entries.sort((a, b) {

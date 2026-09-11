@@ -401,7 +401,7 @@ void main() {
 
     expect(find.text('已逾期'), findsOneWidget);
     final titleFinder = find.descendant(
-      of: find.byType(NodeTile),
+      of: find.byKey(ValueKey<String>('timeline-row-${task.id}')),
       matching: find.text('逾期任务'),
     );
     expect(titleFinder, findsOneWidget);
