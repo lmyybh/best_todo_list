@@ -1,5 +1,6 @@
 import 'package:best_todo_list/app/app.dart';
 import 'package:best_todo_list/app/app_controller.dart';
+import 'package:best_todo_list/app/app_theme.dart';
 import 'package:best_todo_list/app/node_persistence_workspace.dart';
 import 'package:best_todo_list/domain/deadline.dart';
 import 'package:best_todo_list/domain/todo_node.dart';
@@ -29,11 +30,13 @@ void main() {
     final phase = await expectWriteSuccess(
       controller.create(parentId: root.id, title: '发布准备', selectCreated: false),
     );
-    await controller.create(
-      parentId: phase.id,
-      title: '检查安装包',
-      deadline: TimedDeadline(DateTime(2026, 9, 11, 11)),
-      selectCreated: false,
+    final task = await expectWriteSuccess(
+      controller.create(
+        parentId: phase.id,
+        title: '检查安装包',
+        deadline: TimedDeadline(DateTime(2026, 9, 11, 11)),
+        selectCreated: false,
+      ),
     );
     await controller.create(
       parentId: phase.id,
@@ -61,6 +64,42 @@ void main() {
 
     expect(find.text('检查安装包'), findsOneWidget);
     expect(find.text('明天发布'), findsNothing);
+
+    final rootTitle = find.descendant(
+      of: find.byKey(ValueKey<String>('timeline-row-${root.id}')),
+      matching: find.text('工作项目'),
+    );
+    final phaseTitle = find.descendant(
+      of: find.byKey(ValueKey<String>('timeline-row-${phase.id}')),
+      matching: find.text('发布准备'),
+    );
+    final taskTitle = find.descendant(
+      of: find.byKey(ValueKey<String>('timeline-row-${task.id}')),
+      matching: find.text('检查安装包'),
+    );
+    final colors = AppColors.of(tester.element(phaseTitle));
+    expect(tester.widget<Text>(rootTitle).style?.fontSize, 10);
+    expect(tester.widget<Text>(phaseTitle).style?.fontSize, 13);
+    expect(tester.widget<Text>(phaseTitle).style?.color, colors.muted);
+    expect(tester.widget<Text>(taskTitle).style?.fontSize, 14);
+
+    await controller.updateDeadline(
+      phase.id,
+      TimedDeadline(DateTime(2026, 9, 11, 11)),
+    );
+    await tester.pumpAndSettle();
+    final phaseDeadline = find.descendant(
+      of: find.byKey(ValueKey<String>('timeline-row-${phase.id}')),
+      matching: find.text('9 月 11 日，11:00'),
+    );
+    final taskDeadline = find.descendant(
+      of: find.byKey(ValueKey<String>('timeline-row-${task.id}')),
+      matching: find.text('9 月 11 日，11:00'),
+    );
+    expect(
+      tester.getTopRight(phaseDeadline).dx,
+      closeTo(tester.getTopRight(taskDeadline).dx, 0.1),
+    );
 
     await tester.tap(
       find.byKey(ValueKey<String>('timeline-expand-${phase.id}')),

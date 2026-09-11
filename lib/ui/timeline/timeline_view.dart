@@ -682,6 +682,13 @@ class _TimelineTreeGroup extends StatelessWidget {
   final AppController controller;
   final List<TimelineTreeEntry> entries;
 
+  double _dividerIndent(int index) {
+    if (entries[index - 1].depth == 0) return 0;
+    final entry = entries[index];
+    final nestedDepth = (entry.depth - 1).clamp(0, 4);
+    return (entry.entry.isEvent ? 18 : 48) + nestedDepth * 18;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
@@ -698,9 +705,9 @@ class _TimelineTreeGroup extends StatelessWidget {
             if (index > 0)
               Divider(
                 height: 1,
-                indent: 14,
-                endIndent: 14,
-                color: colors.borderSoft,
+                indent: _dividerIndent(index),
+                endIndent: 12,
+                color: colors.borderSoft.withValues(alpha: 0.55),
               ),
             _TimelineTreeRow(controller: controller, treeEntry: entries[index]),
           ],
@@ -747,11 +754,13 @@ class _TimelineTreeRowState extends State<_TimelineTreeRow> {
         controller.isTimelineExpanded(node.id, isRoot: treeEntry.depth == 0);
     final overdue =
         (node.deadline?.isOverdue(controller.now) ?? false) && !complete;
+    final isRootEvent = isEvent && treeEntry.depth == 0;
     final visualDepth = treeEntry.depth > 5 ? 5 : treeEntry.depth;
+    final nestedDepth = isRootEvent ? 0 : (visualDepth - 1).clamp(0, 4);
     final rowColor = _hovered
         ? colors.surfaceHover
-        : isEvent
-        ? colors.accentSoft.withValues(alpha: 0.3)
+        : isRootEvent
+        ? colors.surfaceHover.withValues(alpha: 0.62)
         : Colors.transparent;
 
     void openNode() {
@@ -789,21 +798,20 @@ class _TimelineTreeRowState extends State<_TimelineTreeRow> {
               onTap: openNode,
               hoverColor: Colors.transparent,
               child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: isEvent ? 50 : 44),
+                constraints: BoxConstraints(minHeight: isRootEvent ? 32 : 44),
                 child: Stack(
                   children: <Widget>[
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
+                      padding: EdgeInsets.fromLTRB(
+                        isRootEvent ? 14 : 10,
+                        isRootEvent ? 4 : 6,
+                        12,
+                        isRootEvent ? 4 : 6,
+                      ),
                       child: Row(
                         children: <Widget>[
-                          if (visualDepth > 0)
-                            CustomPaint(
-                              size: Size(visualDepth * 18.0, 32),
-                              painter: _TreeLinesPainter(
-                                depth: visualDepth,
-                                color: colors.border,
-                              ),
-                            ),
+                          if (nestedDepth > 0)
+                            SizedBox(width: nestedDepth * 18.0),
                           if (isEvent && hasShownChildren)
                             IconButton(
                               key: ValueKey<String>(
@@ -819,18 +827,19 @@ class _TimelineTreeRowState extends State<_TimelineTreeRow> {
                                 expanded
                                     ? Icons.keyboard_arrow_down
                                     : Icons.keyboard_arrow_right,
-                                size: 18,
+                                size: isRootEvent ? 14 : 18,
+                                color: colors.muted,
                               ),
                               visualDensity: VisualDensity.compact,
-                              constraints: const BoxConstraints.tightFor(
-                                width: 28,
-                                height: 28,
+                              constraints: BoxConstraints.tightFor(
+                                width: isRootEvent ? 20 : 28,
+                                height: isRootEvent ? 20 : 28,
                               ),
                               padding: EdgeInsets.zero,
                             )
-                          else
-                            const SizedBox(width: 28),
-                          if (abandoned)
+                          else if (isEvent)
+                            SizedBox(width: isRootEvent ? 20 : 28)
+                          else if (abandoned)
                             IconButton(
                               tooltip: '取消放弃',
                               onPressed: () => controller.setTaskStatus(
@@ -849,8 +858,6 @@ class _TimelineTreeRowState extends State<_TimelineTreeRow> {
                                 color: colors.muted,
                               ),
                             )
-                          else if (isEvent)
-                            const SizedBox(width: 28)
                           else
                             SizedBox(
                               width: 28,
@@ -867,42 +874,52 @@ class _TimelineTreeRowState extends State<_TimelineTreeRow> {
                                 visualDensity: VisualDensity.compact,
                               ),
                             ),
-                          const SizedBox(width: 9),
+                          SizedBox(width: isRootEvent ? 6 : 9),
                           Expanded(
                             child: Tooltip(
                               message: entry.path.join(' / '),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
+                              child: Row(
                                 children: <Widget>[
-                                  Text(
-                                    node.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: isEvent
-                                          ? FontWeight.w600
-                                          : FontWeight.w500,
-                                      decoration: complete || abandoned
-                                          ? TextDecoration.lineThrough
-                                          : null,
-                                      color: complete || abandoned
-                                          ? colors.muted
-                                          : Theme.of(
-                                              context,
-                                            ).colorScheme.onSurface,
+                                  Flexible(
+                                    flex: isEvent ? 3 : 1,
+                                    child: Text(
+                                      node.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: isRootEvent
+                                            ? 10
+                                            : isEvent
+                                            ? 13
+                                            : 14,
+                                        fontWeight: isEvent
+                                            ? FontWeight.w600
+                                            : FontWeight.w500,
+                                        decoration: complete || abandoned
+                                            ? TextDecoration.lineThrough
+                                            : null,
+                                        color: complete || abandoned || isEvent
+                                            ? colors.muted
+                                            : Theme.of(
+                                                context,
+                                              ).colorScheme.onSurface,
+                                      ),
                                     ),
                                   ),
                                   if (isEvent) ...<Widget>[
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      '${treeEntry.matchingCount} 项相关 · '
-                                      '$completedCount/${leaves.length} 已完成'
-                                      '${treeEntry.depth > 5 ? ' · 第 ${treeEntry.depth + 1} 层' : ''}',
-                                      style: TextStyle(
-                                        color: colors.muted,
-                                        fontSize: 11,
+                                    const SizedBox(width: 7),
+                                    Flexible(
+                                      flex: 2,
+                                      child: Text(
+                                        '${treeEntry.matchingCount} 项相关 · '
+                                        '$completedCount/${leaves.length} 已完成'
+                                        '${treeEntry.depth > 5 ? ' · 第 ${treeEntry.depth + 1} 层' : ''}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: colors.faint,
+                                          fontSize: 9,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -955,34 +972,6 @@ class _TimelineTreeRowState extends State<_TimelineTreeRow> {
       ),
     );
   }
-}
-
-class _TreeLinesPainter extends CustomPainter {
-  const _TreeLinesPainter({required this.depth, required this.color});
-
-  final int depth;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1;
-    for (var level = 0; level < depth; level++) {
-      final x = level * 18.0 + 9;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    final branchX = (depth - 1) * 18.0 + 9;
-    canvas.drawLine(
-      Offset(branchX, size.height / 2),
-      Offset(size.width, size.height / 2),
-      paint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _TreeLinesPainter oldDelegate) =>
-      oldDelegate.depth != depth || oldDelegate.color != color;
 }
 
 class _TimelineSection extends StatelessWidget {
