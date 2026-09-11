@@ -1,5 +1,6 @@
 import 'package:best_todo_list/app/node_persistence_workspace.dart';
 import 'package:best_todo_list/app/node_write_result.dart';
+import 'package:best_todo_list/domain/deadline.dart';
 import 'package:best_todo_list/domain/todo_node.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -62,6 +63,84 @@ void main() {
     ]);
     expect(workspace.tree.pathFor(third.id), <String>['根事件', '第一步', '第三层']);
     expect(second.manualOrder, greaterThan(first.manualOrder));
+  });
+
+  test('子任务默认沿用直接父节点的截止日期', () async {
+    final parentDeadline = DateOnlyDeadline(year: 2026, month: 8, day: 20);
+    final parent = await expectWriteSuccess(
+      workspace.createNode(title: '事件', deadline: parentDeadline),
+    );
+
+    final child = await expectWriteSuccess(
+      workspace.createNode(parentId: parent.id, title: '子任务'),
+    );
+
+    expect(child.deadline?.storage.date, '2026-08-20');
+  });
+
+  test('子任务显式设置的截止日期优先于父节点', () async {
+    final parent = await expectWriteSuccess(
+      workspace.createNode(
+        title: '事件',
+        deadline: DateOnlyDeadline(year: 2026, month: 8, day: 20),
+      ),
+    );
+    final childDeadline = TimedDeadline(DateTime(2026, 8, 18, 16, 30));
+
+    final child = await expectWriteSuccess(
+      workspace.createNode(
+        parentId: parent.id,
+        title: '子任务',
+        deadline: childDeadline,
+      ),
+    );
+
+    expect(child.deadline, isA<TimedDeadline>());
+    expect((child.deadline! as TimedDeadline).instant, childDeadline.instant);
+  });
+
+  test('无截止日期的父节点不会为子任务生成截止日期', () async {
+    final parent = await expectWriteSuccess(workspace.createNode(title: '事件'));
+
+    final child = await expectWriteSuccess(
+      workspace.createNode(parentId: parent.id, title: '子任务'),
+    );
+
+    expect(child.deadline, isNull);
+  });
+
+  test('继承后父子节点的截止日期可独立修改', () async {
+    final parent = await expectWriteSuccess(
+      workspace.createNode(
+        title: '事件',
+        deadline: DateOnlyDeadline(year: 2026, month: 8, day: 20),
+      ),
+    );
+    final child = await expectWriteSuccess(
+      workspace.createNode(parentId: parent.id, title: '子任务'),
+    );
+
+    await expectWriteSuccess(
+      workspace.updateDeadline(
+        child.id,
+        DateOnlyDeadline(year: 2026, month: 8, day: 18),
+      ),
+    );
+    await expectWriteSuccess(
+      workspace.updateDeadline(
+        parent.id,
+        DateOnlyDeadline(year: 2026, month: 8, day: 22),
+      ),
+    );
+
+    expect(
+      workspace.tree.nodes[parent.id]!.deadline?.storage.date,
+      '2026-08-22',
+    );
+    expect(
+      workspace.tree.nodes[child.id]!.deadline?.storage.date,
+      '2026-08-18',
+    );
   });
 
   test('叶子完成和取消完成写入正确状态', () async {

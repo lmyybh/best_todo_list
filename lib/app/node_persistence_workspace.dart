@@ -67,6 +67,7 @@ class NodePersistenceWorkspace {
     if (parentId != null && !currentTree.nodes.containsKey(parentId)) {
       throw const NodeRuleException('父事件不存在');
     }
+    final parent = parentId == null ? null : currentTree.nodes[parentId];
 
     final id = _idGenerator();
     if (currentTree.nodes.containsKey(id)) {
@@ -84,13 +85,12 @@ class NodePersistenceWorkspace {
       id: id,
       parentId: parentId,
       title: cleanTitle,
-      deadline: deadline,
+      deadline: deadline ?? parent?.deadline,
       createdAt: now,
       updatedAt: now,
       manualOrder: order,
     );
     final changes = <TodoNode>[node];
-    final parent = parentId == null ? null : currentTree.nodes[parentId];
     if (parent?.completedAt != null && currentTree.isLeaf(parent!.id)) {
       changes.insert(
         0,
