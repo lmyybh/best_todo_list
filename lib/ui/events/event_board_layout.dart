@@ -20,6 +20,7 @@ class EventBoardLayout {
     required double maxHeight,
     required NodeTree tree,
     required List<TodoNode> roots,
+    bool includeNewEventCard = true,
   }) {
     final padding = maxWidth < 640
         ? const EdgeInsets.fromLTRB(16, 16, 16, 24)
@@ -55,7 +56,7 @@ class EventBoardLayout {
           minimumHeight: minimumCardHeight,
           maximumHeight: maximumCardHeight,
         ),
-      minimumCardHeight,
+      if (includeNewEventCard) minimumCardHeight,
     ];
     final rowHeights = <double>[];
     for (var start = 0; start < preferredHeights.length; start += columns) {

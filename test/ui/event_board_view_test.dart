@@ -1,7 +1,9 @@
 import 'package:best_todo_list/app/app.dart';
 import 'package:best_todo_list/app/app_controller.dart';
 import 'package:best_todo_list/app/node_persistence_workspace.dart';
+import 'package:best_todo_list/domain/deadline.dart';
 import 'package:best_todo_list/ui/events/event_board_view.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +13,180 @@ import '../helpers/memory_node_repository.dart';
 import '../helpers/write_result.dart';
 
 void main() {
+  testWidgets('今日筛选展示今天和逾期任务的事件分支并提供空状态', (tester) async {
+    var id = 0;
+    final controller = AppController(
+      NodePersistenceWorkspace(
+        MemoryNodeRepository(),
+        clock: () => DateTime.utc(2026, 8, 13, 9),
+        idGenerator: () => 'focus-${++id}',
+      ),
+      clock: () => DateTime(2026, 8, 13, 9),
+    );
+    await controller.load();
+    addTearDown(controller.dispose);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final focusedEvent = await expectWriteSuccess(
+      controller.create(title: '需要关注的事件', selectCreated: false),
+    );
+    final branch = await expectWriteSuccess(
+      controller.create(
+        parentId: focusedEvent.id,
+        title: '保留的祖先分支',
+        selectCreated: false,
+      ),
+    );
+    final overdue = await expectWriteSuccess(
+      controller.create(
+        parentId: branch.id,
+        title: '逾期任务',
+        deadline: DateOnlyDeadline(year: 2026, month: 8, day: 12),
+        selectCreated: false,
+      ),
+    );
+    final today = await expectWriteSuccess(
+      controller.create(
+        parentId: focusedEvent.id,
+        title: '今日任务',
+        deadline: DateOnlyDeadline(year: 2026, month: 8, day: 13),
+        selectCreated: false,
+      ),
+    );
+    await controller.create(
+      parentId: focusedEvent.id,
+      title: '未来任务',
+      deadline: DateOnlyDeadline(year: 2026, month: 8, day: 14),
+      selectCreated: false,
+    );
+    final futureEvent = await expectWriteSuccess(
+      controller.create(title: '未来事件', selectCreated: false),
+    );
+    await controller.create(
+      parentId: futureEvent.id,
+      title: '另一个未来任务',
+      deadline: DateOnlyDeadline(year: 2026, month: 8, day: 15),
+      selectCreated: false,
+    );
+    controller.showEventOverview();
+
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    await tester.pumpWidget(TodoApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey<String>('event-board-toolbar')))
+          .height,
+      32,
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey<String>('event-board-filter')))
+          .height,
+      32,
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey<String>('event-board-filter')))
+          .width,
+      122,
+    );
+    expect(
+      tester
+          .widget<MouseRegion>(
+            find.byKey(const ValueKey<String>('event-board-filter-cursor')),
+          )
+          .cursor,
+      SystemMouseCursors.click,
+    );
+    var filter = tester
+        .widget<CupertinoSlidingSegmentedControl<EventBoardFilter>>(
+          find.byKey(const ValueKey<String>('event-board-filter-control')),
+        );
+    expect(filter.groupValue, EventBoardFilter.all);
+    expect(filter.backgroundColor, const Color(0xFFECEDE9));
+    expect(filter.thumbColor, const Color(0xFFC9DED9));
+    expect(filter.padding, const EdgeInsets.all(2));
+    expect(filter.proportionalWidth, isTrue);
+    expect(find.text('今日'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('event-board-today-count')),
+        matching: find.text('1'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(ValueKey<String>('event-card-${futureEvent.id}')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('今日'));
+    await tester.pumpAndSettle();
+
+    expect(controller.eventBoardFilter, EventBoardFilter.todayFocus);
+    filter = tester.widget<CupertinoSlidingSegmentedControl<EventBoardFilter>>(
+      find.byKey(const ValueKey<String>('event-board-filter-control')),
+    );
+    expect(filter.groupValue, EventBoardFilter.todayFocus);
+    expect(
+      find.byKey(ValueKey<String>('event-card-${focusedEvent.id}')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(ValueKey<String>('event-card-${futureEvent.id}')),
+      findsNothing,
+    );
+    expect(find.text('保留的祖先分支'), findsOneWidget);
+    expect(find.text('逾期任务'), findsOneWidget);
+    expect(find.text('今日任务'), findsOneWidget);
+    expect(find.text('未来任务'), findsNothing);
+    expect(find.byKey(const ValueKey<String>('event-new-card')), findsNothing);
+    expect(
+      find.byKey(ValueKey<String>('event-drag-${focusedEvent.id}')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(
+        ValueKey<String>('event-quick-add-trigger-${focusedEvent.id}'),
+      ),
+      findsNothing,
+    );
+
+    await tester.tap(
+      find.byKey(ValueKey<String>('event-complete-${overdue.id}')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('event-board-today-count')),
+        matching: find.text('1'),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(ValueKey<String>('event-complete-${today.id}')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('今天没有需要关注的任务'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('event-board-today-count')),
+        matching: find.text('0'),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('查看全部事件'));
+    await tester.pumpAndSettle();
+    expect(controller.eventBoardFilter, EventBoardFilter.all);
+    expect(
+      find.byKey(ValueKey<String>('event-card-${futureEvent.id}')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('事件卡片随桌面宽度分列并在同行保持等高', (tester) async {
     var id = 0;
     final controller = AppController(

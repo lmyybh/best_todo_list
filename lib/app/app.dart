@@ -12,21 +12,21 @@ class TodoApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: controller,
-      builder: (context, _) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'todo',
-        locale: const Locale('zh', 'CN'),
-        supportedLocales: const <Locale>[Locale('zh', 'CN'), Locale('en')],
-        localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        theme: AppTheme.light(),
-        themeMode: ThemeMode.light,
-        home: HomeShell(controller: controller),
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'todo',
+      locale: const Locale('zh', 'CN'),
+      supportedLocales: const <Locale>[Locale('zh', 'CN'), Locale('en')],
+      localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      theme: AppTheme.light(),
+      themeMode: ThemeMode.light,
+      home: ListenableBuilder(
+        listenable: controller,
+        builder: (context, _) => HomeShell(controller: controller),
       ),
     );
   }

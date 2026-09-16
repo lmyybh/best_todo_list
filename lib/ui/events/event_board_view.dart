@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart' show CupertinoSlidingSegmentedControl;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -14,6 +15,7 @@ import '../common/formatters.dart';
 import 'event_board_layout.dart';
 import 'event_board_reorder_session.dart';
 import 'event_card_task_interaction.dart';
+import 'today_focus_projection.dart';
 
 class EventBoardView extends StatefulWidget {
   const EventBoardView({required this.controller, super.key});
@@ -46,6 +48,19 @@ class _EventBoardViewState extends State<EventBoardView> {
   int? renderedColumns;
   bool animateResponsiveReflow = false;
   Offset? latestDragPosition;
+  late EventBoardFilter selectedFilter;
+  bool focusBoardBuilt = false;
+  Object? allBoardCacheKey;
+  Widget? allBoardCache;
+  Object? focusBoardCacheKey;
+  Widget? focusBoardCache;
+
+  @override
+  void initState() {
+    super.initState();
+    selectedFilter = widget.controller.eventBoardFilter;
+    focusBoardBuilt = selectedFilter == EventBoardFilter.todayFocus;
+  }
 
   @override
   void dispose() {
@@ -58,19 +73,28 @@ class _EventBoardViewState extends State<EventBoardView> {
 
   @override
   Widget build(BuildContext context) {
-    final roots = widget.controller.tree.visibleChildrenOf(null);
-    final rootsById = <String, TodoNode>{
-      for (final root in roots) root.id: root,
+    final sourceTree = widget.controller.tree;
+    final allRoots = sourceTree.visibleChildrenOf(null);
+    final todayFocus = TodayFocusProjection.from(
+      source: sourceTree,
+      roots: allRoots,
+      now: widget.controller.now,
+    );
+    final focusMode = selectedFilter == EventBoardFilter.todayFocus;
+    final allRootsById = <String, TodoNode>{
+      for (final root in allRoots) root.id: root,
     };
-    final rootIds = roots.map((root) => root.id).toList();
+    final allRootIds = allRoots.map((root) => root.id).toList();
     final previewIds = reorderSession.orderedIds;
-    final orderedIds =
+    final orderedAllIds =
         previewIds != null &&
-            previewIds.length == rootIds.length &&
-            previewIds.every(rootsById.containsKey)
+            previewIds.length == allRootIds.length &&
+            previewIds.every(allRootsById.containsKey)
         ? previewIds
-        : rootIds;
-    final orderedRoots = orderedIds.map((id) => rootsById[id]!).toList();
+        : allRootIds;
+    final orderedAllRoots = orderedAllIds
+        .map((id) => allRootsById[id]!)
+        .toList();
     return Focus(
       focusNode: boardFocusNode,
       onKeyEvent: (_, event) {
@@ -84,15 +108,24 @@ class _EventBoardViewState extends State<EventBoardView> {
       },
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final layout = const EventBoardLayout().project(
+          final maxHeight = constraints.hasBoundedHeight
+              ? constraints.maxHeight
+              : double.infinity;
+          final allLayout = const EventBoardLayout().project(
             maxWidth: constraints.maxWidth,
-            maxHeight: constraints.hasBoundedHeight
-                ? constraints.maxHeight
-                : double.infinity,
-            tree: widget.controller.tree,
-            roots: orderedRoots,
+            maxHeight: maxHeight,
+            tree: sourceTree,
+            roots: orderedAllRoots,
           );
-          _recordRenderedColumns(layout.columns);
+          final focusLayout = const EventBoardLayout().project(
+            maxWidth: constraints.maxWidth,
+            maxHeight: maxHeight,
+            tree: todayFocus.tree,
+            roots: todayFocus.roots,
+            includeNewEventCard: false,
+          );
+          final activeLayout = focusMode ? focusLayout : allLayout;
+          _recordRenderedColumns(activeLayout.columns);
           final animationsDisabled = MediaQuery.disableAnimationsOf(context);
           final layoutAnimationDuration = animationsDisabled
               ? Duration.zero
@@ -101,45 +134,168 @@ class _EventBoardViewState extends State<EventBoardView> {
               : animateResponsiveReflow
               ? const Duration(milliseconds: 140)
               : Duration.zero;
-          final items = <TodoNode?>[...orderedRoots, null];
+          final cacheKey = (
+            sourceTree,
+            orderedAllIds.join('\u0000'),
+            allLayout.gridWidth,
+            allLayout.totalHeight,
+            allLayout.cardWidth,
+            allLayout.columns,
+            layoutAnimationDuration,
+          );
+          if (allBoardCacheKey != cacheKey || allBoardCache == null) {
+            allBoardCacheKey = cacheKey;
+            allBoardCache = _buildBoard(
+              context: context,
+              roots: orderedAllRoots,
+              allRoots: allRoots,
+              displayTree: sourceTree,
+              layout: allLayout,
+              animationDuration: layoutAnimationDuration,
+              focusMode: false,
+              todayFocus: todayFocus,
+              includeNewEventCard: true,
+              stackKey: boardKey,
+            );
+          }
+          if (focusBoardBuilt) {
+            final now = widget.controller.now;
+            final focusCacheKey = (
+              sourceTree,
+              DateTime(now.year, now.month, now.day),
+              todayFocus.roots
+                  .map(
+                    (root) => '${root.id}:${todayFocus.taskCountFor(root.id)}',
+                  )
+                  .join('\u0000'),
+              focusLayout.gridWidth,
+              focusLayout.totalHeight,
+              focusLayout.cardWidth,
+              focusLayout.columns,
+              layoutAnimationDuration,
+            );
+            if (focusBoardCacheKey != focusCacheKey ||
+                focusBoardCache == null) {
+              focusBoardCacheKey = focusCacheKey;
+              focusBoardCache = _buildBoard(
+                context: context,
+                roots: todayFocus.roots,
+                allRoots: allRoots,
+                displayTree: todayFocus.tree,
+                layout: focusLayout,
+                animationDuration: layoutAnimationDuration,
+                focusMode: true,
+                todayFocus: todayFocus,
+                includeNewEventCard: false,
+              );
+            }
+          }
 
           return KeyedSubtree(
             key: const ValueKey<String>('event-board-scroll'),
             child: SingleChildScrollView(
               key: scrollViewportKey,
               controller: boardScrollController,
-              padding: layout.padding,
-              child: roots.isEmpty
-                  ? _EmptyBoard(onCreate: () => _createEvent(context))
-                  : Align(
-                      alignment: Alignment.topCenter,
-                      child: SizedBox(
-                        key: const ValueKey<String>('event-board-wrap'),
-                        width: layout.gridWidth,
-                        height: layout.totalHeight,
-                        child: Stack(
-                          key: boardKey,
-                          children: <Widget>[
-                            for (var index = 0; index < items.length; index++)
-                              _buildPositionedItem(
-                                context: context,
-                                item: items[index],
-                                allRoots: roots,
-                                index: index,
-                                columns: layout.columns,
-                                width: layout.cardWidth,
-                                height: layout.heightAt(index),
-                                animationDuration: layoutAnimationDuration,
-                                left: layout.leftAt(index),
-                                top: layout.topAt(index),
-                              ),
-                          ],
-                        ),
+              padding: activeLayout.padding,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: SizedBox(
+                  width: activeLayout.gridWidth,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      _EventBoardToolbar(
+                        eventCount: focusMode
+                            ? todayFocus.roots.length
+                            : allRoots.length,
+                        selected: selectedFilter,
+                        todayEventCount: todayFocus.roots.length,
+                        onSelected: _setFilter,
                       ),
-                    ),
+                      const SizedBox(height: 16),
+                      Visibility(
+                        visible: !focusMode,
+                        maintainState: true,
+                        maintainAnimation: true,
+                        child: allBoardCache!,
+                      ),
+                      if (focusBoardBuilt)
+                        Visibility(
+                          visible: focusMode,
+                          maintainState: true,
+                          maintainAnimation: true,
+                          child: focusBoardCache!,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           );
         },
+      ),
+    );
+  }
+
+  void _setFilter(EventBoardFilter filter) {
+    if (selectedFilter == filter) return;
+    if (reorderSession.active) _cancelEventDrag();
+    widget.controller.setEventBoardFilter(filter, notify: false);
+    setState(() {
+      selectedFilter = filter;
+      if (filter == EventBoardFilter.todayFocus) focusBoardBuilt = true;
+    });
+    if (boardScrollController.hasClients) boardScrollController.jumpTo(0);
+  }
+
+  Widget _buildBoard({
+    required BuildContext context,
+    required List<TodoNode> roots,
+    required List<TodoNode> allRoots,
+    required NodeTree displayTree,
+    required EventBoardLayoutProjection layout,
+    required Duration animationDuration,
+    required bool focusMode,
+    required TodayFocusProjection todayFocus,
+    required bool includeNewEventCard,
+    Key? stackKey,
+  }) {
+    if (allRoots.isEmpty) {
+      return _EmptyBoard(onCreate: () => _createEvent(context));
+    }
+    if (focusMode && roots.isEmpty) {
+      return _TodayFocusEmpty(
+        onShowAll: () => _setFilter(EventBoardFilter.all),
+      );
+    }
+    final items = <TodoNode?>[...roots, if (includeNewEventCard) null];
+    return SizedBox(
+      key: const ValueKey<String>('event-board-wrap'),
+      height: layout.totalHeight,
+      child: RepaintBoundary(
+        child: Stack(
+          key: stackKey,
+          children: <Widget>[
+            for (var index = 0; index < items.length; index++)
+              _buildPositionedItem(
+                context: context,
+                item: items[index],
+                allRoots: allRoots,
+                displayTree: displayTree,
+                focusMode: focusMode,
+                todayTaskCount: items[index] == null
+                    ? 0
+                    : todayFocus.taskCountFor(items[index]!.id),
+                index: index,
+                columns: layout.columns,
+                width: layout.cardWidth,
+                height: layout.heightAt(index),
+                animationDuration: animationDuration,
+                left: layout.leftAt(index),
+                top: layout.topAt(index),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -148,6 +304,9 @@ class _EventBoardViewState extends State<EventBoardView> {
     required BuildContext context,
     required TodoNode? item,
     required List<TodoNode> allRoots,
+    required NodeTree displayTree,
+    required bool focusMode,
+    required int todayTaskCount,
     required int index,
     required int columns,
     required double width,
@@ -156,6 +315,24 @@ class _EventBoardViewState extends State<EventBoardView> {
     required double left,
     required double top,
   }) {
+    Widget buildEventCard({bool dropTargeted = false}) => _EventCard(
+      controller: widget.controller,
+      node: item!,
+      tree: displayTree,
+      now: widget.controller.now,
+      color:
+          _eventColors[allRoots.indexWhere((root) => root.id == item.id) %
+              _eventColors.length],
+      dropTargeted: dropTargeted,
+      focusMode: focusMode,
+      todayTaskCount: todayTaskCount,
+      onDragStarted: () => _startDragging(item.id, allRoots),
+      onDragUpdate: _updateEventAutoScroll,
+      onDragEnd: _endDragging,
+      onKeyboardReorder: (direction, toEdge) =>
+          _keyboardReorderEvent(item.id, direction, toEdge, allRoots),
+    );
+
     final child = item == null
         ? DragTarget<String>(
             onWillAcceptWithDetails: (_) => true,
@@ -165,6 +342,8 @@ class _EventBoardViewState extends State<EventBoardView> {
               dropTargeted: candidates.isNotEmpty,
             ),
           )
+        : focusMode
+        ? buildEventCard()
         : DragTarget<String>(
             onWillAcceptWithDetails: (details) {
               if (details.data == item.id) return false;
@@ -181,23 +360,8 @@ class _EventBoardViewState extends State<EventBoardView> {
                   : local.dx > left + width / 2;
               _previewAround(item.id, after: after);
             },
-            builder: (context, candidates, _) => _EventCard(
-              controller: widget.controller,
-              node: item,
-              tree: widget.controller.tree,
-              now: widget.controller.now,
-              color:
-                  _eventColors[allRoots.indexWhere(
-                        (root) => root.id == item.id,
-                      ) %
-                      _eventColors.length],
-              dropTargeted: candidates.isNotEmpty,
-              onDragStarted: () => _startDragging(item.id, allRoots),
-              onDragUpdate: _updateEventAutoScroll,
-              onDragEnd: _endDragging,
-              onKeyboardReorder: (direction, toEdge) =>
-                  _keyboardReorderEvent(item.id, direction, toEdge, allRoots),
-            ),
+            builder: (context, candidates, _) =>
+                buildEventCard(dropTargeted: candidates.isNotEmpty),
           );
 
     return AnimatedPositioned(
@@ -358,6 +522,144 @@ class _EventBoardViewState extends State<EventBoardView> {
   }
 }
 
+class _EventBoardToolbar extends StatelessWidget {
+  const _EventBoardToolbar({
+    required this.eventCount,
+    required this.selected,
+    required this.todayEventCount,
+    required this.onSelected,
+  });
+
+  final int eventCount;
+  final EventBoardFilter selected;
+  final int todayEventCount;
+  final ValueChanged<EventBoardFilter> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    return SizedBox(
+      key: const ValueKey<String>('event-board-toolbar'),
+      height: 32,
+      child: Row(
+        children: <Widget>[
+          const Text(
+            '事件',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '$eventCount 个事件',
+            style: TextStyle(color: colors.faint, fontSize: 11),
+          ),
+          const Spacer(),
+          Tooltip(
+            message: '今日包含今天截止和已经逾期的未完成任务',
+            child: SizedBox(
+              key: const ValueKey<String>('event-board-filter'),
+              width: 122,
+              height: 32,
+              child: MouseRegion(
+                key: const ValueKey<String>('event-board-filter-cursor'),
+                cursor: SystemMouseCursors.click,
+                child: CupertinoSlidingSegmentedControl<EventBoardFilter>(
+                  key: const ValueKey<String>('event-board-filter-control'),
+                  groupValue: selected,
+                  backgroundColor: const Color(0xFFECEDE9),
+                  thumbColor: const Color(0xFFC9DED9),
+                  padding: const EdgeInsets.all(2),
+                  proportionalWidth: true,
+                  onValueChanged: (value) {
+                    if (value != null) onSelected(value);
+                  },
+                  children: <EventBoardFilter, Widget>{
+                    EventBoardFilter.all: _EventBoardFilterLabel(
+                      label: '全部',
+                      selected: selected == EventBoardFilter.all,
+                    ),
+                    EventBoardFilter.todayFocus: _EventBoardFilterLabel(
+                      label: '今日',
+                      count: todayEventCount,
+                      selected: selected == EventBoardFilter.todayFocus,
+                    ),
+                  },
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EventBoardFilterLabel extends StatelessWidget {
+  const _EventBoardFilterLabel({
+    required this.label,
+    required this.selected,
+    this.count,
+  });
+
+  final String label;
+  final bool selected;
+  final int? count;
+
+  @override
+  Widget build(BuildContext context) {
+    const selectedForeground = Color(0xFF294D49);
+    const mutedForeground = Color(0xFF666D67);
+    final foreground = selected ? selectedForeground : mutedForeground;
+
+    return Semantics(
+      label: count == null ? label : '$label，$count 个事件',
+      excludeSemantics: true,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 7),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(
+              label,
+              style: TextStyle(
+                color: foreground,
+                fontSize: 11,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+              ),
+            ),
+            if (count case final count?) ...<Widget>[
+              const SizedBox(width: 3),
+              Container(
+                key: const ValueKey<String>('event-board-today-count'),
+                height: 15,
+                constraints: const BoxConstraints(minWidth: 15),
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? Colors.white.withValues(alpha: 0.62)
+                      : Colors.black.withValues(alpha: 0.07),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    color: selected
+                        ? selectedForeground
+                        : const Color(0xFF626862),
+                    fontSize: 8.5,
+                    height: 1,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 const _eventColors = <Color>[
   Color(0xFFC97967),
   Color(0xFF8D7E9F),
@@ -375,6 +677,8 @@ class _EventCard extends StatefulWidget {
     required this.now,
     required this.color,
     required this.dropTargeted,
+    required this.focusMode,
+    required this.todayTaskCount,
     required this.onDragStarted,
     required this.onDragUpdate,
     required this.onDragEnd,
@@ -387,6 +691,8 @@ class _EventCard extends StatefulWidget {
   final DateTime now;
   final Color color;
   final bool dropTargeted;
+  final bool focusMode;
+  final int todayTaskCount;
   final VoidCallback onDragStarted;
   final ValueChanged<DragUpdateDetails> onDragUpdate;
   final ValueChanged<DraggableDetails> onDragEnd;
@@ -412,22 +718,25 @@ class _EventCardState extends State<_EventCard> {
     final controller = widget.controller;
     final node = widget.node;
     final tree = widget.tree;
+    final sourceTree = controller.tree;
     final now = widget.now;
     final color = widget.color;
     final dropTargeted = widget.dropTargeted;
     final colors = AppColors.of(context);
-    final leaves = tree.actionableLeafDescendantsOf(node.id);
+    final leaves = sourceTree.actionableLeafDescendantsOf(node.id);
     final completed = leaves.where((leaf) => leaf.completedAt != null).length;
-    final abandoned = tree
+    final abandoned = sourceTree
         .leafDescendantsOf(node.id)
         .where((leaf) => leaf.isAbandoned)
         .length;
     final progress = leaves.isEmpty ? 0.0 : completed / leaves.length;
-    final children = tree.childrenOf(node.id);
+    final children = sourceTree.childrenOf(node.id);
     Widget dragRegion() => Focus(
       focusNode: cardFocusNode,
       onKeyEvent: (_, event) {
-        if (event is! KeyDownEvent || !HardwareKeyboard.instance.isAltPressed) {
+        if (widget.focusMode ||
+            event is! KeyDownEvent ||
+            !HardwareKeyboard.instance.isAltPressed) {
           return KeyEventResult.ignored;
         }
         if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
@@ -448,28 +757,32 @@ class _EventCardState extends State<_EventCard> {
       child: Listener(
         onPointerDown: (_) => cardFocusNode.requestFocus(),
         child: MouseRegion(
-          cursor: SystemMouseCursors.grab,
+          cursor: widget.focusMode
+              ? SystemMouseCursors.basic
+              : SystemMouseCursors.grab,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              SizedBox(
-                key: ValueKey<String>('event-drag-${node.id}'),
-                width: 22,
-                height: 24,
-                child: AnimatedOpacity(
-                  opacity: cardHovered || cardDragging ? 1 : 0.55,
-                  duration: const Duration(milliseconds: 100),
-                  child: Tooltip(
-                    message: '拖动排序 · ⌥↑↓ 键盘移动',
-                    child: Icon(
-                      Icons.drag_indicator,
-                      size: 18,
-                      color: colors.muted,
+              if (!widget.focusMode) ...<Widget>[
+                SizedBox(
+                  key: ValueKey<String>('event-drag-${node.id}'),
+                  width: 22,
+                  height: 24,
+                  child: AnimatedOpacity(
+                    opacity: cardHovered || cardDragging ? 1 : 0.55,
+                    duration: const Duration(milliseconds: 100),
+                    child: Tooltip(
+                      message: '拖动排序 · ⌥↑↓ 键盘移动',
+                      child: Icon(
+                        Icons.drag_indicator,
+                        size: 18,
+                        color: colors.muted,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 7),
+                const SizedBox(width: 7),
+              ],
               Container(
                 width: 10,
                 height: 10,
@@ -501,8 +814,20 @@ class _EventCardState extends State<_EventCard> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      children.isEmpty ? '单项任务' : '${children.length} 个直接子任务',
-                      style: TextStyle(color: colors.faint, fontSize: 10),
+                      widget.focusMode
+                          ? '${widget.todayTaskCount} 项关注'
+                          : children.isEmpty
+                          ? '单项任务'
+                          : '${children.length} 个直接子任务',
+                      style: TextStyle(
+                        color: widget.focusMode
+                            ? AppTheme.accent
+                            : colors.faint,
+                        fontSize: 10,
+                        fontWeight: widget.focusMode
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      ),
                     ),
                   ],
                 ),
@@ -570,112 +895,118 @@ class _EventCardState extends State<_EventCard> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           Expanded(
-                            child: Draggable<String>(
-                              key: ValueKey<String>(
-                                'event-drag-region-${node.id}',
-                              ),
-                              data: node.id,
-                              rootOverlay: true,
-                              dragAnchorStrategy: pointerDragAnchorStrategy,
-                              onDragStarted: () {
-                                setState(() => cardDragging = true);
-                                widget.onDragStarted();
-                              },
-                              onDragUpdate: widget.onDragUpdate,
-                              onDragEnd: (details) {
-                                if (mounted) {
-                                  setState(() => cardDragging = false);
-                                }
-                                widget.onDragEnd(details);
-                              },
-                              feedback: Material(
-                                color: Theme.of(context).colorScheme.surface,
-                                elevation: 12,
-                                shadowColor: Colors.black26,
-                                borderRadius: BorderRadius.circular(13),
-                                child: SizedBox(
-                                  width: 280,
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 13,
+                            child: widget.focusMode
+                                ? dragRegion()
+                                : Draggable<String>(
+                                    key: ValueKey<String>(
+                                      'event-drag-region-${node.id}',
                                     ),
-                                    child: Row(
-                                      children: <Widget>[
-                                        Icon(
-                                          Icons.drag_indicator,
-                                          size: 18,
-                                          color: colors.muted,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Container(
-                                          width: 9,
-                                          height: 9,
-                                          decoration: BoxDecoration(
-                                            color: color,
-                                            borderRadius: BorderRadius.circular(
-                                              3,
-                                            ),
+                                    data: node.id,
+                                    rootOverlay: true,
+                                    dragAnchorStrategy:
+                                        pointerDragAnchorStrategy,
+                                    onDragStarted: () {
+                                      setState(() => cardDragging = true);
+                                      widget.onDragStarted();
+                                    },
+                                    onDragUpdate: widget.onDragUpdate,
+                                    onDragEnd: (details) {
+                                      if (mounted) {
+                                        setState(() => cardDragging = false);
+                                      }
+                                      widget.onDragEnd(details);
+                                    },
+                                    feedback: Material(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.surface,
+                                      elevation: 12,
+                                      shadowColor: Colors.black26,
+                                      borderRadius: BorderRadius.circular(13),
+                                      child: SizedBox(
+                                        width: 280,
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 13,
+                                          ),
+                                          child: Row(
+                                            children: <Widget>[
+                                              Icon(
+                                                Icons.drag_indicator,
+                                                size: 18,
+                                                color: colors.muted,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Container(
+                                                width: 9,
+                                                height: 9,
+                                                decoration: BoxDecoration(
+                                                  color: color,
+                                                  borderRadius:
+                                                      BorderRadius.circular(3),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 10),
+                                              Expanded(
+                                                child: Text(
+                                                  node.title,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: Text(
-                                            node.title,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                                      ),
                                     ),
+                                    childWhenDragging: dragRegion(),
+                                    child: dragRegion(),
                                   ),
-                                ),
-                              ),
-                              childWhenDragging: dragRegion(),
-                              child: dragRegion(),
-                            ),
                           ),
-                          MenuAnchor(
-                            menuChildren: <Widget>[
-                              MenuItemButton(
-                                onPressed: () =>
-                                    _renameNode(context, controller, node),
-                                child: const Text('重命名'),
-                              ),
-                              MenuItemButton(
-                                onPressed: () =>
-                                    _abandonTask(context, controller, node),
-                                leadingIcon: const Icon(
-                                  Icons.block_outlined,
+                          if (!widget.focusMode)
+                            MenuAnchor(
+                              menuChildren: <Widget>[
+                                MenuItemButton(
+                                  onPressed: () =>
+                                      _renameNode(context, controller, node),
+                                  child: const Text('重命名'),
+                                ),
+                                MenuItemButton(
+                                  onPressed: () =>
+                                      _abandonTask(context, controller, node),
+                                  leadingIcon: const Icon(
+                                    Icons.block_outlined,
+                                    size: 17,
+                                  ),
+                                  child: const Text('放弃任务'),
+                                ),
+                                MenuItemButton(
+                                  onPressed: () => confirmDeleteNode(
+                                    context,
+                                    controller,
+                                    node,
+                                  ),
+                                  child: const Text('删除'),
+                                ),
+                              ],
+                              builder: (context, menu, _) => IconButton(
+                                key: ValueKey<String>('event-menu-${node.id}'),
+                                tooltip: '任务操作',
+                                onPressed: menu.open,
+                                visualDensity: VisualDensity.compact,
+                                icon: Icon(
+                                  Icons.more_horiz,
                                   size: 17,
+                                  color: colors.muted,
                                 ),
-                                child: const Text('放弃任务'),
-                              ),
-                              MenuItemButton(
-                                onPressed: () => confirmDeleteNode(
-                                  context,
-                                  controller,
-                                  node,
-                                ),
-                                child: const Text('删除'),
-                              ),
-                            ],
-                            builder: (context, menu, _) => IconButton(
-                              key: ValueKey<String>('event-menu-${node.id}'),
-                              tooltip: '任务操作',
-                              onPressed: menu.open,
-                              visualDensity: VisualDensity.compact,
-                              icon: Icon(
-                                Icons.more_horiz,
-                                size: 17,
-                                color: colors.muted,
                               ),
                             ),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 14),
@@ -708,6 +1039,8 @@ class _EventCardState extends State<_EventCard> {
                   child: EventCardTaskInteraction(
                     controller: controller,
                     rootEventId: node.id,
+                    displayTree: tree,
+                    focusMode: widget.focusMode,
                   ),
                 ),
               ],
@@ -835,6 +1168,37 @@ class _EmptyBoard extends StatelessWidget {
             icon: const Icon(Icons.add, size: 17),
             label: const Text('新建事件'),
           ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _TodayFocusEmpty extends StatelessWidget {
+  const _TodayFocusEmpty({required this.onShowAll});
+
+  final VoidCallback onShowAll;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 420,
+    child: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(Icons.task_alt, size: 44, color: AppColors.of(context).muted),
+          const SizedBox(height: 14),
+          const Text(
+            '今天没有需要关注的任务',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '今天截止和已经逾期的未完成任务都会显示在这里',
+            style: TextStyle(color: AppColors.of(context).muted, fontSize: 12),
+          ),
+          const SizedBox(height: 18),
+          OutlinedButton(onPressed: onShowAll, child: const Text('查看全部事件')),
         ],
       ),
     ),

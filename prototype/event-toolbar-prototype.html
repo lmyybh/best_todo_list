@@ -1,0 +1,786 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>事件顶栏视觉原型</title>
+    <!-- Three event-toolbar variants, switchable via ?variant=A|B|C. Throwaway prototype. -->
+    <style>
+      :root {
+        color-scheme: light;
+        --canvas: #f5f4f0;
+        --paper: #fffefb;
+        --surface: #ffffff;
+        --ink: #252825;
+        --muted: #717771;
+        --faint: #9da29d;
+        --line: #e3e3dd;
+        --line-strong: #d3d6cf;
+        --teal: #286f6b;
+        --teal-soft: #e5f1ef;
+        --teal-pale: #f2f8f7;
+        --danger: #b85d4b;
+        --danger-soft: #f6e8e4;
+        --shadow: 0 14px 40px rgb(42 51 47 / 8%);
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body { height: 100%; }
+
+      body {
+        margin: 0;
+        min-width: 360px;
+        overflow: hidden;
+        color: var(--ink);
+        background: var(--canvas);
+        font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      button { font: inherit; }
+
+      button:focus-visible {
+        outline: 3px solid rgb(40 111 107 / 24%);
+        outline-offset: 2px;
+      }
+
+      .window {
+        height: 100%;
+        display: grid;
+        grid-template-rows: 30px 1fr;
+      }
+
+      .titlebar {
+        position: relative;
+        display: flex;
+        align-items: center;
+        border-bottom: 1px solid #dfe3e0;
+        background: #f4f7f6;
+      }
+
+      .traffic-lights {
+        display: flex;
+        gap: 8px;
+        padding-left: 9px;
+      }
+
+      .traffic-lights i {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 1px solid rgb(0 0 0 / 11%);
+      }
+
+      .traffic-lights i:nth-child(1) { background: #ff6259; }
+      .traffic-lights i:nth-child(2) { background: #ffbd2e; }
+      .traffic-lights i:nth-child(3) { background: #28c840; }
+
+      .app-name {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        color: #5f635f;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .shell {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 54px 1fr;
+      }
+
+      .rail {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding-top: 10px;
+        border-right: 1px solid var(--line);
+        background: #f1f2ee;
+      }
+
+      .rail-button {
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border: 0;
+        border-radius: 10px;
+        color: #626862;
+        background: transparent;
+      }
+
+      .rail-button.active {
+        color: var(--teal);
+        background: var(--teal-soft);
+      }
+
+      .rail svg { width: 19px; height: 19px; }
+
+      main {
+        min-width: 0;
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+
+      .toolbar-variant { display: none; }
+      body[data-variant="A"] .variant-a,
+      body[data-variant="B"] .variant-b,
+      body[data-variant="C"] .variant-c { display: flex; }
+
+      .toolbar {
+        min-height: 72px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 0 26px;
+        border-bottom: 1px solid var(--line);
+        background: rgb(255 255 255 / 88%);
+        backdrop-filter: blur(16px);
+      }
+
+      .eyebrow {
+        margin: 0 0 3px;
+        color: var(--faint);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+      }
+
+      .heading-row {
+        display: flex;
+        align-items: baseline;
+        gap: 9px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 19px;
+        line-height: 1.2;
+        letter-spacing: -.02em;
+      }
+
+      .total-count {
+        color: var(--faint);
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      .subline {
+        margin: 5px 0 0;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      /* Variant A: low-contrast capsule group */
+      .soft-tabs {
+        display: flex;
+        gap: 3px;
+        padding: 4px;
+        border: 1px solid #e5e8e3;
+        border-radius: 13px;
+        background: #f4f6f3;
+      }
+
+      .soft-tab {
+        min-height: 34px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 0 14px;
+        border: 0;
+        border-radius: 9px;
+        color: var(--muted);
+        background: transparent;
+        cursor: pointer;
+        transition: color 160ms ease, background-color 160ms ease,
+          box-shadow 160ms ease;
+      }
+
+      .soft-tab:hover { color: var(--ink); background: rgb(255 255 255 / 66%); }
+      .soft-tab[aria-pressed="true"] {
+        color: var(--ink);
+        background: white;
+        box-shadow: 0 1px 2px rgb(32 42 38 / 9%), 0 4px 12px rgb(32 42 38 / 5%);
+      }
+
+      .soft-tab svg { width: 16px; height: 16px; }
+
+      .count-badge {
+        min-width: 20px;
+        height: 20px;
+        display: grid;
+        place-items: center;
+        padding: 0 6px;
+        border-radius: 999px;
+        color: var(--teal);
+        background: var(--teal-soft);
+        font-size: 10px;
+        font-weight: 800;
+      }
+
+      /* Variant B: navigation instead of control */
+      .variant-b {
+        min-height: 66px;
+        justify-content: flex-start;
+        gap: 34px;
+      }
+
+      .variant-b .heading-row { min-width: 86px; }
+
+      .line-tabs {
+        align-self: stretch;
+        display: flex;
+        align-items: stretch;
+        gap: 24px;
+      }
+
+      .line-tab {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 2px 1px 0;
+        border: 0;
+        color: var(--muted);
+        background: transparent;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 650;
+        transition: color 160ms ease;
+      }
+
+      .line-tab:hover { color: var(--ink); }
+      .line-tab::after {
+        content: "";
+        position: absolute;
+        right: 0;
+        bottom: -1px;
+        left: 0;
+        height: 2px;
+        border-radius: 2px 2px 0 0;
+        background: transparent;
+      }
+
+      .line-tab[aria-pressed="true"] { color: var(--teal); }
+      .line-tab[aria-pressed="true"]::after { background: var(--teal); }
+      .line-tab .count-badge { height: 18px; min-width: 18px; }
+
+      .toolbar-note {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        color: var(--faint);
+        font-size: 10px;
+      }
+
+      .toolbar-note svg { width: 14px; height: 14px; }
+
+      /* Variant C: the focus state is a compact summary object */
+      .variant-c { min-height: 82px; }
+
+      .scope-link {
+        margin-top: 5px;
+        padding: 0;
+        border: 0;
+        color: var(--teal);
+        background: transparent;
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .focus-summary {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        min-width: 286px;
+        padding: 9px 10px 9px 12px;
+        border: 1px solid #d9e6e3;
+        border-radius: 14px;
+        background: var(--teal-pale);
+        box-shadow: 0 5px 18px rgb(40 111 107 / 6%);
+      }
+
+      .focus-icon {
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        flex: 0 0 auto;
+        border-radius: 10px;
+        color: var(--teal);
+        background: white;
+        box-shadow: 0 1px 3px rgb(40 111 107 / 12%);
+      }
+
+      .focus-icon svg { width: 17px; height: 17px; }
+      .focus-copy { flex: 1; min-width: 0; }
+      .focus-title { font-size: 12px; font-weight: 800; }
+      .focus-meta { margin-top: 3px; color: var(--muted); font-size: 10px; }
+
+      .focus-action {
+        height: 32px;
+        padding: 0 12px;
+        border: 0;
+        border-radius: 9px;
+        color: white;
+        background: var(--teal);
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 750;
+        transition: background-color 160ms ease;
+      }
+
+      .focus-action:hover { background: #205f5b; }
+      body[data-scope="focus"] .focus-action { color: var(--teal); background: white; }
+
+      .board {
+        min-height: 0;
+        overflow: auto;
+        padding: 24px;
+      }
+
+      .card-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(260px, 1fr));
+        gap: 16px;
+        max-width: 1680px;
+        margin: 0 auto;
+      }
+
+      .event-card {
+        min-height: 390px;
+        overflow: hidden;
+        border: 1px solid var(--line-strong);
+        border-radius: 13px;
+        background: var(--surface);
+        box-shadow: 0 1px 1px rgb(27 34 31 / 2%);
+      }
+
+      body[data-scope="focus"] .event-card:not([data-focus="true"]) { display: none; }
+
+      .card-head { padding: 16px 16px 14px; border-bottom: 1px solid var(--line); }
+      .card-title-row { display: flex; align-items: center; gap: 10px; }
+      .grip { color: #adb3ae; font-size: 15px; letter-spacing: -2px; }
+      .project-mark { width: 10px; height: 10px; border-radius: 3px; background: var(--mark); }
+      .card-title { flex: 1; margin: 0; font-size: 16px; font-weight: 760; }
+      .more { color: var(--muted); letter-spacing: 1px; }
+      .card-sub { margin: 5px 0 0 48px; color: var(--faint); font-size: 10px; }
+
+      .focus-chip {
+        display: none;
+        margin-left: auto;
+        padding: 4px 7px;
+        border-radius: 999px;
+        color: var(--danger);
+        background: var(--danger-soft);
+        font-size: 9px;
+        font-weight: 800;
+      }
+
+      body[data-scope="focus"] .event-card[data-focus="true"] .focus-chip { display: block; }
+      body[data-scope="focus"] .more { display: none; }
+
+      .progress-copy {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 16px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .progress-track { height: 3px; margin-top: 9px; border-radius: 3px; background: #e9eae6; }
+      .progress-track i { display: block; width: var(--progress); height: 100%; border-radius: inherit; background: var(--mark); }
+      .task-list { display: grid; gap: 2px; padding: 14px 11px; }
+
+      .task {
+        min-height: 36px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 7px;
+        border-radius: 8px;
+        font-size: 12px;
+      }
+
+      .task:hover { background: #f5f6f3; }
+      .task.done { color: var(--faint); text-decoration: line-through; }
+      .task.child { padding-left: 27px; }
+      .task.hidden-in-focus { display: flex; }
+      body[data-scope="focus"] .task.hidden-in-focus { display: none; }
+      .task-grip { color: #bdc1bd; letter-spacing: -2px; }
+      .check { width: 15px; height: 15px; flex: 0 0 auto; border: 1.2px solid #9fa69f; border-radius: 50%; }
+      .done .check { display: grid; place-items: center; border: 0; color: white; background: #5f8e7c; text-decoration: none; font-size: 9px; }
+      .task-date { margin-left: auto; color: var(--faint); font-size: 9px; }
+      .task-date.overdue { color: var(--danger); font-weight: 750; }
+
+      .prototype-switcher {
+        position: fixed;
+        z-index: 20;
+        left: 50%;
+        bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 5px;
+        transform: translateX(-50%);
+        border: 1px solid rgb(255 255 255 / 20%);
+        border-radius: 15px;
+        color: white;
+        background: #252b29;
+        box-shadow: 0 14px 42px rgb(20 24 23 / 28%);
+      }
+
+      .prototype-switcher button {
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        border: 0;
+        border-radius: 10px;
+        color: white;
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .prototype-switcher button:hover { background: rgb(255 255 255 / 10%); }
+      .variant-label { min-width: 210px; text-align: center; font-size: 11px; font-weight: 700; }
+      .prototype-tag { margin-right: 8px; color: #91c8c1; font-size: 9px; letter-spacing: .08em; }
+
+      @media (max-width: 1180px) {
+        .card-grid { grid-template-columns: repeat(2, minmax(280px, 1fr)); }
+      }
+
+      @media (max-width: 720px) {
+        body { overflow: auto; }
+        .window { min-height: 100%; height: auto; }
+        .shell { grid-template-columns: 46px 1fr; }
+        .toolbar { min-height: 112px; align-items: flex-start; flex-direction: column; gap: 12px; padding: 18px; }
+        .soft-tabs, .line-tabs, .focus-summary { width: 100%; }
+        .soft-tab, .line-tab { flex: 1; justify-content: center; }
+        .variant-b { gap: 10px; }
+        .variant-b .heading-row { min-width: 0; }
+        .toolbar-note { display: none; }
+        .focus-summary { min-width: 0; }
+        .board { padding: 14px; }
+        .card-grid { grid-template-columns: 1fr; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+      }
+
+      /* V2: no dedicated top bar. Controls live inside the canvas or rail. */
+      main { position: relative; display: block; }
+      .toolbar-variant { display: none !important; }
+      .board { height: 100%; padding: 18px 24px 24px; }
+
+      .rail-scope {
+        display: none;
+        width: 34px;
+        margin-top: 6px;
+        padding-top: 10px;
+        border-top: 1px solid var(--line-strong);
+      }
+
+      .rail-scope .rail-button { position: relative; width: 34px; height: 34px; }
+      .rail-scope .rail-button[aria-pressed="true"] { color: var(--teal); background: var(--teal-soft); }
+      .rail-badge {
+        position: absolute;
+        top: 2px;
+        right: 1px;
+        min-width: 13px;
+        height: 13px;
+        display: grid;
+        place-items: center;
+        padding: 0 3px;
+        border: 1px solid #f1f2ee;
+        border-radius: 999px;
+        color: white;
+        background: var(--danger);
+        font-size: 7px;
+        font-weight: 800;
+      }
+
+      body[data-variant="B"] .rail-scope { display: grid; gap: 5px; }
+
+      body[data-variant="A"] .variant-a {
+        position: absolute;
+        z-index: 3;
+        top: 14px;
+        left: 24px;
+        right: 24px;
+        height: 32px;
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      body[data-variant="A"] .board { padding-top: 58px; }
+      .canvas-label { display: flex; align-items: baseline; gap: 7px; }
+      .canvas-label strong { font-size: 14px; }
+      .canvas-label span { color: var(--faint); font-size: 10px; }
+
+      .micro-tabs {
+        display: flex;
+        gap: 2px;
+        height: 30px;
+        padding: 3px;
+        border-radius: 9px;
+        background: #e9ebe6;
+      }
+
+      .micro-tab {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 7px;
+        color: var(--muted);
+        background: transparent;
+        cursor: pointer;
+        font-size: 10px;
+        font-weight: 650;
+        transition: color 160ms ease, background-color 160ms ease,
+          box-shadow 160ms ease;
+      }
+
+      .micro-tab:hover { color: var(--ink); background: rgb(255 255 255 / 55%); }
+      .micro-tab[aria-pressed="true"] {
+        color: #425956;
+        background: #dce7e4;
+        box-shadow: inset 0 0 0 1px rgb(66 89 86 / 7%);
+      }
+      .micro-tab .count-badge { min-width: 16px; height: 16px; padding: 0 4px; font-size: 8px; }
+      .micro-tab[aria-pressed="true"] .count-badge {
+        color: #425956;
+        background: rgb(255 255 255 / 46%);
+      }
+
+      body[data-variant="C"] .variant-c {
+        position: absolute;
+        z-index: 3;
+        top: 14px;
+        right: 16px;
+        display: flex !important;
+      }
+
+      body[data-variant="C"] .board { padding-right: 72px; }
+      .edge-tabs {
+        display: grid;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid var(--line-strong);
+        border-radius: 11px;
+        background: rgb(255 255 255 / 92%);
+        box-shadow: 0 5px 18px rgb(31 40 36 / 8%);
+      }
+
+      .edge-tab {
+        position: relative;
+        width: 32px;
+        height: 32px;
+        display: grid;
+        place-items: center;
+        border: 0;
+        border-radius: 8px;
+        color: var(--muted);
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .edge-tab:hover { background: #f2f4f0; }
+      .edge-tab[aria-pressed="true"] { color: var(--teal); background: var(--teal-soft); }
+      .edge-tab svg { width: 16px; height: 16px; }
+      .edge-tab .rail-badge { top: -1px; right: -1px; border-color: white; }
+
+      @media (max-width: 720px) {
+        .board { padding: 14px; }
+        body[data-variant="A"] .variant-a { left: 14px; right: 14px; }
+        body[data-variant="A"] .board { padding-top: 56px; }
+        body[data-variant="C"] .board { padding-right: 58px; }
+        body[data-variant="C"] .variant-c { top: 12px; right: 8px; }
+      }
+    </style>
+  </head>
+  <body data-variant="A" data-scope="all">
+    <div class="window">
+      <div class="titlebar">
+        <div class="traffic-lights" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="app-name">todo</div>
+      </div>
+
+      <div class="shell">
+        <nav class="rail" aria-label="主导航">
+          <button class="rail-button active" aria-label="事件">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></svg>
+          </button>
+          <button class="rail-button" aria-label="日程">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></svg>
+          </button>
+          <div class="rail-scope" role="group" aria-label="事件范围">
+            <button class="rail-button scope-control" data-scope="all" aria-label="全部事件" aria-pressed="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
+            </button>
+            <button class="rail-button scope-control" data-scope="focus" aria-label="今日，2 个事件" aria-pressed="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/><path d="m9 15 2 2 4-4"/></svg>
+              <span class="rail-badge">2</span>
+            </button>
+          </div>
+        </nav>
+
+        <main>
+          <div class="toolbar-variant variant-a" aria-label="画布内筛选">
+            <div class="canvas-label"><strong>事件</strong><span data-visible-count>4 个事件</span></div>
+            <div class="micro-tabs" role="group" aria-label="事件范围">
+              <button class="micro-tab scope-control" data-scope="all" aria-pressed="true">全部</button>
+              <button class="micro-tab scope-control" data-scope="focus" aria-pressed="false">今日 <span class="count-badge">2</span></button>
+            </div>
+          </div>
+
+          <div class="toolbar-variant variant-c" aria-label="右侧悬浮筛选">
+            <div class="edge-tabs" role="group" aria-label="事件范围">
+              <button class="edge-tab scope-control" data-scope="all" aria-label="全部事件" aria-pressed="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
+              </button>
+              <button class="edge-tab scope-control" data-scope="focus" aria-label="今日，2 个事件" aria-pressed="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/><path d="m9 15 2 2 4-4"/></svg>
+                <span class="rail-badge">2</span>
+              </button>
+            </div>
+          </div>
+
+          <section class="board" aria-label="事件面板">
+            <div class="card-grid">
+              <article class="event-card" data-focus="true" style="--mark:#c97967;--progress:72%">
+                <div class="card-head">
+                  <div class="card-title-row"><span class="grip">⠿</span><i class="project-mark"></i><h2 class="card-title">Global KV</h2><span class="focus-chip">2 项关注</span><span class="more">•••</span></div>
+                  <p class="card-sub">7 个直接子任务</p>
+                  <div class="progress-copy"><span>7 / 10 已完成</span><span>70%</span></div>
+                  <div class="progress-track"><i></i></div>
+                </div>
+                <div class="task-list">
+                  <div class="task"><span class="task-grip">⠿</span><span class="check"></span><strong>添加正确性校验</strong><span class="task-date overdue">逾期 2 天</span></div>
+                  <div class="task child done hidden-in-focus"><span class="task-grip">⠿</span><span class="check">✓</span>找到少数请求输出无关内容的原因</div>
+                  <div class="task child hidden-in-focus"><span class="task-grip">⠿</span><span class="check"></span>优化点：在一次调度内读取前缀</div>
+                  <div class="task child"><span class="task-grip">⠿</span><span class="check"></span>补充边界测试<span class="task-date">今天</span></div>
+                </div>
+              </article>
+
+              <article class="event-card" data-focus="true" style="--mark:#8d7e9f;--progress:97%">
+                <div class="card-head">
+                  <div class="card-title-row"><span class="grip">⠿</span><i class="project-mark"></i><h2 class="card-title">v4-flash</h2><span class="focus-chip">1 项关注</span><span class="more">•••</span></div>
+                  <p class="card-sub">7 个直接子任务</p>
+                  <div class="progress-copy"><span>38 / 39 已完成</span><span>97%</span></div>
+                  <div class="progress-track"><i></i></div>
+                </div>
+                <div class="task-list">
+                  <div class="task hidden-in-focus"><span class="task-grip">⠿</span><span class="check"></span><strong>对比 2P1D 和 3 副本性能</strong></div>
+                  <div class="task done hidden-in-focus"><span class="task-grip">⠿</span><span class="check">✓</span>镜像版本导致的差异</div>
+                  <div class="task"><span class="task-grip">⠿</span><span class="check"></span>确认最终性能数据<span class="task-date">今天 18:00</span></div>
+                </div>
+              </article>
+
+              <article class="event-card" data-focus="false" style="--mark:#b58a43;--progress:0%">
+                <div class="card-head">
+                  <div class="card-title-row"><span class="grip">⠿</span><i class="project-mark"></i><h2 class="card-title">deepseek-v4.1-flash</h2><span class="more">•••</span></div>
+                  <p class="card-sub">单项任务</p>
+                  <div class="progress-copy"><span>0 / 1 已完成</span><span>0%</span></div>
+                  <div class="progress-track"><i></i></div>
+                </div>
+                <div class="task-list"><div class="task"><span class="task-grip">⠿</span><span class="check"></span>还没有子任务</div></div>
+              </article>
+
+              <article class="event-card" data-focus="false" style="--mark:#718d72;--progress:50%">
+                <div class="card-head">
+                  <div class="card-title-row"><span class="grip">⠿</span><i class="project-mark"></i><h2 class="card-title">SGLang</h2><span class="more">•••</span></div>
+                  <p class="card-sub">6 个直接子任务</p>
+                  <div class="progress-copy"><span>3 / 6 已完成</span><span>50%</span></div>
+                  <div class="progress-track"><i></i></div>
+                </div>
+                <div class="task-list">
+                  <div class="task"><span class="task-grip">⠿</span><span class="check"></span>阅读 v4 代码</div>
+                  <div class="task done"><span class="task-grip">⠿</span><span class="check">✓</span>各种 jit cache 的编译和缓存</div>
+                  <div class="task"><span class="task-grip">⠿</span><span class="check"></span>watchdog 的多种 timeout</div>
+                </div>
+              </article>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <div class="prototype-switcher" aria-label="原型方案切换">
+      <button id="previous" aria-label="上一个方案">←</button>
+      <div class="variant-label"><span class="prototype-tag">PROTOTYPE</span><span id="variant-name"></span></div>
+      <button id="next" aria-label="下一个方案">→</button>
+    </div>
+
+    <script>
+      const variants = [
+        { key: "A", name: "画布内切换" },
+        { key: "B", name: "并入侧栏" },
+        { key: "C", name: "右侧悬浮" },
+      ];
+      const params = new URLSearchParams(location.search);
+      let variantIndex = Math.max(0, variants.findIndex((item) => item.key === params.get("variant")));
+      let scope = params.get("scope") === "focus" ? "focus" : "all";
+
+      function updateUrl() {
+        const next = new URL(location.href);
+        next.searchParams.set("variant", variants[variantIndex].key);
+        next.searchParams.set("scope", scope);
+        history.replaceState({}, "", next);
+      }
+
+      function render() {
+        const variant = variants[variantIndex];
+        document.body.dataset.variant = variant.key;
+        document.body.dataset.scope = scope;
+        document.getElementById("variant-name").textContent = `${variant.key} · ${variant.name}`;
+        document.querySelectorAll(".scope-control").forEach((button) => {
+          button.setAttribute("aria-pressed", String(button.dataset.scope === scope));
+        });
+        document.querySelectorAll("[data-heading]").forEach((node) => {
+          node.textContent = scope === "focus" ? "今日" : "全部事件";
+        });
+        document.querySelectorAll("[data-visible-count]").forEach((node) => {
+          node.textContent = scope === "focus" ? "2 个事件" : "4 个事件";
+        });
+        document.querySelectorAll("[data-description]").forEach((node) => {
+          node.textContent = scope === "focus" ? "今天截止与逾期的未完成任务" : "所有事件按手动顺序排列";
+        });
+        document.querySelectorAll(".focus-action").forEach((button) => {
+          button.textContent = scope === "focus" ? "正在关注" : "聚焦处理";
+        });
+        updateUrl();
+      }
+
+      function cycle(direction) {
+        variantIndex = (variantIndex + direction + variants.length) % variants.length;
+        render();
+      }
+
+      document.querySelectorAll(".scope-control").forEach((button) => {
+        button.addEventListener("click", () => { scope = button.dataset.scope; render(); });
+      });
+      document.getElementById("previous").addEventListener("click", () => cycle(-1));
+      document.getElementById("next").addEventListener("click", () => cycle(1));
+      window.addEventListener("keydown", (event) => {
+        const tag = event.target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || event.target.isContentEditable) return;
+        if (event.key === "ArrowLeft") cycle(-1);
+        if (event.key === "ArrowRight") cycle(1);
+      });
+      render();
+    </script>
+  </body>
+</html>

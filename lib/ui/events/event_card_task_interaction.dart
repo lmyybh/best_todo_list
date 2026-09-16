@@ -21,11 +21,15 @@ class EventCardTaskInteraction extends StatefulWidget {
   const EventCardTaskInteraction({
     required this.controller,
     required this.rootEventId,
+    this.displayTree,
+    this.focusMode = false,
     super.key,
   });
 
   final AppController controller;
   final String rootEventId;
+  final NodeTree? displayTree;
+  final bool focusMode;
 
   @override
   State<EventCardTaskInteraction> createState() =>
@@ -365,12 +369,13 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
 
   Widget _buildContent(BuildContext context) {
     final controller = widget.controller;
-    final tree = controller.tree;
+    final tree = widget.displayTree ?? controller.tree;
     final children = tree.visibleChildrenOf(widget.rootEventId);
     final colors = AppColors.of(context);
     final interaction = _EventTaskTreeInteraction(
       controller: controller,
       tree: tree,
+      focusMode: widget.focusMode,
       collapsedIds: collapsedIds,
       expandedBeyondPreviewIds: expandedBeyondPreviewIds,
       highlightedId: highlightedId,
@@ -414,59 +419,65 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
         }
       }),
     );
+    final treeContent = children.isEmpty
+        ? Padding(
+            padding: const EdgeInsets.all(18),
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Text(
+                '还没有子任务',
+                style: TextStyle(color: colors.faint, fontSize: 11),
+              ),
+            ),
+          )
+        : Builder(
+            builder: (context) {
+              return KeyedSubtree(
+                key: treeViewportKey,
+                child: Listener(
+                  onPointerSignal: _handleTreePointerSignal,
+                  child: Scrollbar(
+                    key: ValueKey<String>(
+                      'event-tree-scrollbar-${widget.rootEventId}',
+                    ),
+                    controller: treeScrollController,
+                    thumbVisibility: true,
+                    interactive: true,
+                    radius: const Radius.circular(4),
+                    child: _EventTaskGroup(
+                      key: ValueKey<String>(
+                        'event-tree-scroll-${widget.rootEventId}',
+                      ),
+                      interaction: interaction,
+                      parentId: widget.rootEventId,
+                      depth: 0,
+                      scrollController: treeScrollController,
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
     return Column(
       children: <Widget>[
         Expanded(
-          child: TaskMoveDropTarget(
-            key: ValueKey<String>('event-list-drop-${widget.rootEventId}'),
+          child: widget.focusMode
+              ? treeContent
+              : TaskMoveDropTarget(
+                  key: ValueKey<String>(
+                    'event-list-drop-${widget.rootEventId}',
+                  ),
+                  controller: controller,
+                  parentId: widget.rootEventId,
+                  child: treeContent,
+                ),
+        ),
+        if (!widget.focusMode)
+          _CardQuickAdd(
             controller: controller,
             parentId: widget.rootEventId,
-            child: children.isEmpty
-                ? Padding(
-                    padding: const EdgeInsets.all(18),
-                    child: Align(
-                      alignment: Alignment.topLeft,
-                      child: Text(
-                        '还没有子任务',
-                        style: TextStyle(color: colors.faint, fontSize: 11),
-                      ),
-                    ),
-                  )
-                : Builder(
-                    builder: (context) {
-                      return KeyedSubtree(
-                        key: treeViewportKey,
-                        child: Listener(
-                          onPointerSignal: _handleTreePointerSignal,
-                          child: Scrollbar(
-                            key: ValueKey<String>(
-                              'event-tree-scrollbar-${widget.rootEventId}',
-                            ),
-                            controller: treeScrollController,
-                            thumbVisibility: true,
-                            interactive: true,
-                            radius: const Radius.circular(4),
-                            child: _EventTaskGroup(
-                              key: ValueKey<String>(
-                                'event-tree-scroll-${widget.rootEventId}',
-                              ),
-                              interaction: interaction,
-                              parentId: widget.rootEventId,
-                              depth: 0,
-                              scrollController: treeScrollController,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+            onCreated: highlightCreated,
           ),
-        ),
-        _CardQuickAdd(
-          controller: controller,
-          parentId: widget.rootEventId,
-          onCreated: highlightCreated,
-        ),
       ],
     );
   }
@@ -476,6 +487,7 @@ class _EventTaskTreeInteraction {
   const _EventTaskTreeInteraction({
     required this.controller,
     required this.tree,
+    required this.focusMode,
     required this._collapsedIds,
     required this._expandedBeyondPreviewIds,
     required this._highlightedId,
@@ -492,6 +504,7 @@ class _EventTaskTreeInteraction {
 
   final AppController controller;
   final NodeTree tree;
+  final bool focusMode;
   final Set<String> _collapsedIds;
   final Set<String> _expandedBeyondPreviewIds;
   final String? _highlightedId;
@@ -507,7 +520,8 @@ class _EventTaskTreeInteraction {
 
   bool isExpanded(String nodeId, int depth) =>
       !_collapsedIds.contains(nodeId) &&
-      (depth < _maximumPreviewDepth ||
+      (focusMode ||
+          depth < _maximumPreviewDepth ||
           _expandedBeyondPreviewIds.contains(nodeId));
 
   bool canExpand(TodoNode node) => tree.visibleChildrenOf(node.id).isNotEmpty;
@@ -516,7 +530,8 @@ class _EventTaskTreeInteraction {
       isExpanded(node.id, depth) &&
       (tree.visibleChildrenOf(node.id).isNotEmpty || showsDraft(node.id));
 
-  bool showsDraft(String parentId) => _inlineDraftParentId == parentId;
+  bool showsDraft(String parentId) =>
+      !focusMode && _inlineDraftParentId == parentId;
 
   bool isHighlighted(String nodeId) => _highlightedId == nodeId;
 
@@ -732,7 +747,8 @@ class _EventTreeRowState extends State<_EventTreeRow> {
         .where((descendant) => !descendant.isAbandoned)
         .length;
     final complete = tree.isComplete(node.id);
-    final showActions = (hovered || focused) && !renaming;
+    final showActions =
+        !interaction.focusMode && (hovered || focused) && !renaming;
     final deleteButtonStyle = ButtonStyle(
       foregroundColor: WidgetStateProperty.resolveWith(
         (states) =>
@@ -749,11 +765,15 @@ class _EventTreeRowState extends State<_EventTreeRow> {
       onFocusChange: (value) => setState(() => focused = value),
       onKeyEvent: (_, event) {
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
-        if (event.logicalKey == LogicalKeyboardKey.f2 && !renaming) {
+        if (!interaction.focusMode &&
+            event.logicalKey == LogicalKeyboardKey.f2 &&
+            !renaming) {
           interaction.rename(node);
           return KeyEventResult.handled;
         }
-        if (renaming || !HardwareKeyboard.instance.isAltPressed) {
+        if (interaction.focusMode ||
+            renaming ||
+            !HardwareKeyboard.instance.isAltPressed) {
           return KeyEventResult.ignored;
         }
         if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
@@ -812,37 +832,40 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                   padding: EdgeInsets.only(left: depth * 20),
                   child: Row(
                     children: <Widget>[
-                      SizedBox(
-                        width: 18,
-                        child: AnimatedOpacity(
-                          opacity: renaming
-                              ? 0.25
-                              : hovered
-                              ? 1
-                              : 0.45,
-                          duration: const Duration(milliseconds: 90),
-                          child: IgnorePointer(
-                            ignoring: renaming,
-                            child: TaskMoveDragHandle(
-                              key: ValueKey<String>(
-                                'event-task-drag-${node.id}',
-                              ),
-                              node: node,
-                              child: Tooltip(
-                                message: '拖动调整位置或层级 · ⌥↑↓ 键盘排序',
-                                child: MouseRegion(
-                                  cursor: SystemMouseCursors.grab,
-                                  child: Icon(
-                                    Icons.drag_indicator,
-                                    size: 16,
-                                    color: colors.muted,
+                      if (interaction.focusMode)
+                        const SizedBox(width: 4)
+                      else
+                        SizedBox(
+                          width: 18,
+                          child: AnimatedOpacity(
+                            opacity: renaming
+                                ? 0.25
+                                : hovered
+                                ? 1
+                                : 0.45,
+                            duration: const Duration(milliseconds: 90),
+                            child: IgnorePointer(
+                              ignoring: renaming,
+                              child: TaskMoveDragHandle(
+                                key: ValueKey<String>(
+                                  'event-task-drag-${node.id}',
+                                ),
+                                node: node,
+                                child: Tooltip(
+                                  message: '拖动调整位置或层级 · ⌥↑↓ 键盘排序',
+                                  child: MouseRegion(
+                                    cursor: SystemMouseCursors.grab,
+                                    child: Icon(
+                                      Icons.drag_indicator,
+                                      size: 16,
+                                      color: colors.muted,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
                       SizedBox(
                         width: onToggleExpanded == null ? 8 : 18,
                         child: onToggleExpanded == null
@@ -905,16 +928,21 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                             : Align(
                                 alignment: Alignment.centerLeft,
                                 child: Tooltip(
-                                  message: '双击重命名',
+                                  message: interaction.focusMode
+                                      ? '打开详情'
+                                      : '双击重命名',
                                   waitDuration: const Duration(
                                     milliseconds: 700,
                                   ),
                                   child: MouseRegion(
-                                    cursor: SystemMouseCursors.text,
+                                    cursor: interaction.focusMode
+                                        ? SystemMouseCursors.click
+                                        : SystemMouseCursors.text,
                                     child: GestureDetector(
                                       behavior: HitTestBehavior.opaque,
-                                      onDoubleTap: () =>
-                                          interaction.rename(node),
+                                      onDoubleTap: interaction.focusMode
+                                          ? null
+                                          : () => interaction.rename(node),
                                       child: Text(
                                         key: ValueKey<String>(
                                           'event-row-title-${node.id}',
@@ -941,7 +969,19 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                       if (node.deadline != null && !hovered && !renaming)
                         Text(
                           formatCompactDeadline(node.deadline!),
-                          style: TextStyle(color: colors.faint, fontSize: 9),
+                          style: TextStyle(
+                            color:
+                                interaction.focusMode &&
+                                    node.deadline!.isOverdue(controller.now)
+                                ? colors.danger
+                                : colors.faint,
+                            fontSize: 9,
+                            fontWeight:
+                                interaction.focusMode &&
+                                    node.deadline!.isOverdue(controller.now)
+                                ? FontWeight.w700
+                                : FontWeight.normal,
+                          ),
                         ),
                       if (children.isNotEmpty &&
                           !expanded &&
@@ -1036,6 +1076,7 @@ class _EventTreeRowState extends State<_EventTreeRow> {
         ),
       ),
     );
+    if (interaction.focusMode) return row;
     return TaskMoveRowDropTarget(
       key: ValueKey<String>('event-task-drop-${node.id}'),
       controller: controller,
@@ -1366,6 +1407,7 @@ class _CardQuickAddState extends State<_CardQuickAdd> {
                   key: ValueKey<String>('event-quick-add-${widget.parentId}'),
                   controller: textController,
                   focusNode: focusNode,
+                  scrollPadding: EdgeInsets.zero,
                   onSubmitted: (_) => submit(),
                   textInputAction: TextInputAction.done,
                   style: const TextStyle(fontSize: 11),

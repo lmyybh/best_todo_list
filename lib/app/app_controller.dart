@@ -11,6 +11,8 @@ import 'node_write_result.dart';
 
 enum AppView { events, timeline }
 
+enum EventBoardFilter { all, todayFocus }
+
 class AppController extends ChangeNotifier {
   AppController(this._workspace, {DateTime Function()? clock})
     : _clock = clock ?? DateTime.now {
@@ -28,6 +30,7 @@ class AppController extends ChangeNotifier {
   bool _disposed = false;
 
   AppView view = AppView.events;
+  EventBoardFilter eventBoardFilter = EventBoardFilter.all;
   final Set<String> expandedIds = <String>{};
   final Set<String> timelineExpandedIds = <String>{};
   final Set<String> timelineCollapsedRootIds = <String>{};
@@ -80,6 +83,12 @@ class AppController extends ChangeNotifier {
   void setView(AppView next) {
     view = next;
     notifyListeners();
+  }
+
+  void setEventBoardFilter(EventBoardFilter next, {bool notify = true}) {
+    if (eventBoardFilter == next) return;
+    eventBoardFilter = next;
+    if (notify) notifyListeners();
   }
 
   void selectTimelineDate(DateTime date) {
