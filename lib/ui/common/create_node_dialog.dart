@@ -9,16 +9,24 @@ class CreateNodeDialog extends StatefulWidget {
     this.fieldLabel = '标题',
     this.hintText = '输入事件名称',
     this.confirmLabel = '创建',
+    this.showDefaultTodayDeadline = false,
     this.onSubmit,
+    this.onSubmitWithDefaultTodayDeadline,
     super.key,
-  });
+  }) : assert(
+         onSubmit == null || onSubmitWithDefaultTodayDeadline == null,
+         '不能同时设置 onSubmit 和 onSubmitWithDefaultTodayDeadline',
+       );
 
   final String title;
   final String initialTitle;
   final String fieldLabel;
   final String hintText;
   final String confirmLabel;
+  final bool showDefaultTodayDeadline;
   final Future<String?> Function(String value)? onSubmit;
+  final Future<String?> Function(String value, bool defaultTodayDeadline)?
+  onSubmitWithDefaultTodayDeadline;
 
   @override
   State<CreateNodeDialog> createState() => _CreateNodeDialogState();
@@ -30,6 +38,7 @@ class _CreateNodeDialogState extends State<CreateNodeDialog> {
     text: widget.initialTitle,
   );
   bool _submitting = false;
+  bool _defaultTodayDeadline = false;
   String? _submitError;
 
   @override
@@ -50,8 +59,10 @@ class _CreateNodeDialogState extends State<CreateNodeDialog> {
     if (_submitting) return;
     if (!_formKey.currentState!.validate()) return;
     final value = _controller.text.trim();
+    final submitWithDefaultTodayDeadline =
+        widget.onSubmitWithDefaultTodayDeadline;
     final submit = widget.onSubmit;
-    if (submit == null) {
+    if (submitWithDefaultTodayDeadline == null && submit == null) {
       Navigator.pop(context, value);
       return;
     }
@@ -59,7 +70,9 @@ class _CreateNodeDialogState extends State<CreateNodeDialog> {
       _submitting = true;
       _submitError = null;
     });
-    final error = await submit(value);
+    final error = submitWithDefaultTodayDeadline != null
+        ? await submitWithDefaultTodayDeadline(value, _defaultTodayDeadline)
+        : await submit!(value);
     if (!mounted) return;
     if (error == null) {
       Navigator.pop(context);
@@ -85,7 +98,7 @@ class _CreateNodeDialogState extends State<CreateNodeDialog> {
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
     contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-    actionsPadding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+    actionsPadding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
     title: Text(
       widget.title,
       style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
@@ -111,6 +124,34 @@ class _CreateNodeDialogState extends State<CreateNodeDialog> {
               textInputAction: TextInputAction.done,
               onFieldSubmitted: (_) => unawaited(_submit()),
             ),
+            if (widget.showDefaultTodayDeadline) ...<Widget>[
+              const SizedBox(height: 12),
+              SwitchListTile(
+                key: const ValueKey<String>('default-today-deadline-switch'),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                dense: true,
+                visualDensity: const VisualDensity(vertical: -4),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                selected: _defaultTodayDeadline,
+                selectedTileColor: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: 0.08),
+                title: const Text(
+                  '默认今天截止',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  '开启后设为今天 23:00',
+                  style: TextStyle(fontSize: 12),
+                ),
+                value: _defaultTodayDeadline,
+                onChanged: _submitting
+                    ? null
+                    : (value) => setState(() => _defaultTodayDeadline = value),
+              ),
+            ],
             if (_submitError != null) ...<Widget>[
               const SizedBox(height: 6),
               Text(

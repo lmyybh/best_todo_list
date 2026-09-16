@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../app/app_controller.dart';
 import '../../app/node_write_result.dart';
 import '../../app/app_theme.dart';
+import '../../domain/deadline.dart';
 import '../../services/update_controller.dart';
 import '../../services/update_service.dart';
 import '../../services/windows_update_installer.dart';
@@ -92,9 +93,14 @@ class AppRail extends StatelessWidget {
     await showDialog<void>(
       context: context,
       builder: (context) => CreateNodeDialog(
-        onSubmit: (title) async {
+        showDefaultTodayDeadline: true,
+        onSubmitWithDefaultTodayDeadline: (title, defaultTodayDeadline) async {
+          final now = controller.now;
           final result = await controller.create(
             title: title,
+            deadline: defaultTodayDeadline
+                ? TimedDeadline(DateTime(now.year, now.month, now.day, 23))
+                : null,
             selectCreated: false,
           );
           if (result is NodeWriteFailure) return '创建失败，请重试';

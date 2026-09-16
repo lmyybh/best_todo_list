@@ -64,6 +64,38 @@ void main() {
 
     expect(find.text('新版发布'), findsWidgets);
     expect(controller.nodes, hasLength(1));
+    expect(controller.nodes.single.deadline, isNull);
+  });
+
+  testWidgets('新建事件可默认设为今天 23:00 截止', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1100, 760));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(TodoApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('create-event-navigation')),
+    );
+    await tester.pumpAndSettle();
+
+    final deadlineSwitch = find.byKey(
+      const ValueKey<String>('default-today-deadline-switch'),
+    );
+    expect(deadlineSwitch, findsOneWidget);
+    expect(find.text('默认今天截止'), findsOneWidget);
+    expect(find.text('开启后设为今天 23:00'), findsOneWidget);
+    expect(tester.widget<SwitchListTile>(deadlineSwitch).selected, isFalse);
+
+    await tester.enterText(find.byType(TextFormField), '当日事件');
+    await tester.tap(deadlineSwitch);
+    await tester.pump();
+    expect(tester.widget<SwitchListTile>(deadlineSwitch).selected, isTrue);
+    await tester.tap(find.widgetWithText(FilledButton, '创建'));
+    await tester.pumpAndSettle();
+
+    final deadline = controller.nodes.single.deadline;
+    expect(deadline, isA<TimedDeadline>());
+    expect((deadline! as TimedDeadline).localTime, DateTime(2026, 8, 11, 23));
   });
 
   testWidgets('创建写入失败时弹窗保留标题并可原地重试', (tester) async {

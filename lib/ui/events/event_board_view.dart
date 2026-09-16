@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../app/app_controller.dart';
 import '../../app/node_write_result.dart';
 import '../../app/app_theme.dart';
+import '../../domain/deadline.dart';
 import '../../domain/node_tree.dart';
 import '../../domain/todo_node.dart';
 import '../common/create_node_dialog.dart';
@@ -508,9 +509,14 @@ class _EventBoardViewState extends State<EventBoardView> {
     await showDialog<void>(
       context: context,
       builder: (context) => CreateNodeDialog(
-        onSubmit: (title) async {
+        showDefaultTodayDeadline: true,
+        onSubmitWithDefaultTodayDeadline: (title, defaultTodayDeadline) async {
+          final now = widget.controller.now;
           final result = await widget.controller.create(
             title: title,
+            deadline: defaultTodayDeadline
+                ? TimedDeadline(DateTime(now.year, now.month, now.day, 23))
+                : null,
             selectCreated: false,
           );
           if (result is NodeWriteFailure) return '创建失败，请重试';
