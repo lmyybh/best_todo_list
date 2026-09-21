@@ -56,6 +56,26 @@ void main() {
 
     expect(baseline('已归档 0'), closeTo(baseline('1 个事件'), 0.01));
     expect(baseline('事件'), closeTo(baseline('1 个事件'), 0.01));
+    expect(
+      tester
+          .getCenter(find.byKey(ValueKey<String>('event-drag-${event.id}')))
+          .dx,
+      tester
+          .getCenter(find.byKey(ValueKey<String>('event-task-drag-${task.id}')))
+          .dx,
+    );
+    final count = find.byKey(
+      ValueKey<String>('event-header-count-${event.id}'),
+    );
+    final completed = find.byKey(
+      ValueKey<String>('event-header-completed-${event.id}'),
+    );
+    final progress = find.byKey(
+      ValueKey<String>('event-header-progress-${event.id}'),
+    );
+    expect(tester.getTopLeft(count).dy, tester.getTopLeft(completed).dy);
+    expect(tester.getTopLeft(count).dx, tester.getTopLeft(progress).dx);
+    expect(tester.getTopRight(completed).dx, tester.getTopRight(progress).dx);
     Future<void> choose(String label) async {
       await tester.tap(find.byKey(ValueKey<String>('event-menu-${event.id}')));
       await tester.pumpAndSettle();

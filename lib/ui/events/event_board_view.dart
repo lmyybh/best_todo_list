@@ -870,13 +870,13 @@ class _EventCardState extends State<_EventCard> {
               ? SystemMouseCursors.basic
               : SystemMouseCursors.grab,
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
               if (!widget.focusMode) ...<Widget>[
                 SizedBox(
                   key: ValueKey<String>('event-drag-${node.id}'),
-                  width: 22,
-                  height: 24,
+                  width: 18,
+                  height: 28,
                   child: AnimatedOpacity(
                     opacity: cardHovered || cardDragging ? 1 : 0.55,
                     duration: const Duration(milliseconds: 100),
@@ -884,61 +884,39 @@ class _EventCardState extends State<_EventCard> {
                       message: '拖动排序 · ⌥↑↓ 键盘移动',
                       child: Icon(
                         Icons.drag_indicator,
-                        size: 18,
+                        size: 16,
                         color: colors.muted,
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 7),
+                const SizedBox(width: 5),
               ],
               Container(
-                width: 10,
-                height: 10,
-                margin: const EdgeInsets.only(top: 4),
+                width: 9,
+                height: 9,
+
                 decoration: BoxDecoration(
                   color: color,
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 9),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    InkWell(
-                      key: ValueKey<String>('event-title-${node.id}'),
-                      mouseCursor: SystemMouseCursors.click,
-                      onTap: () => controller.select(node.id),
-                      child: Text(
-                        node.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          height: 1.25,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+                child: InkWell(
+                  key: ValueKey<String>('event-title-${node.id}'),
+                  mouseCursor: SystemMouseCursors.click,
+                  onTap: () => controller.select(node.id),
+                  child: Text(
+                    node.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      height: 1.375,
+                      fontWeight: FontWeight.w700,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      widget.focusMode
-                          ? '${widget.todayTaskCount} 项关注'
-                          : children.isEmpty
-                          ? '单项任务'
-                          : '${children.length} 个直接子任务',
-                      style: TextStyle(
-                        color: widget.focusMode
-                            ? AppTheme.accent
-                            : colors.faint,
-                        fontSize: 10,
-                        fontWeight: widget.focusMode
-                            ? FontWeight.w600
-                            : FontWeight.normal,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ],
@@ -996,7 +974,12 @@ class _EventCardState extends State<_EventCard> {
             child: Column(
               children: <Widget>[
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(17, 16, 17, 14),
+                  padding: EdgeInsets.fromLTRB(
+                    widget.focusMode ? 16 : 10,
+                    10,
+                    16,
+                    10,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
@@ -1175,26 +1158,81 @@ class _EventCardState extends State<_EventCard> {
                             ),
                         ],
                       ),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: <Widget>[
-                          Text(
-                            '$completed / ${leaves.length} 已完成'
-                            '${abandoned == 0 ? '' : ' · $abandoned 已放弃'}',
-                            style: TextStyle(color: colors.muted, fontSize: 10),
-                          ),
-                          const Spacer(),
-                          _DeadlineLabel(node: node, now: now),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(3),
-                        child: LinearProgressIndicator(
-                          value: progress,
-                          minHeight: 3,
-                          color: color,
-                          backgroundColor: colors.borderSoft,
+                      const SizedBox(height: 5),
+                      Padding(
+                        padding: EdgeInsets.only(
+                          left: widget.focusMode ? 0 : 23,
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.baseline,
+                              textBaseline: TextBaseline.alphabetic,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    widget.focusMode
+                                        ? '${widget.todayTaskCount} 项关注'
+                                        : children.isEmpty
+                                        ? '单项任务'
+                                        : '${children.length} 个直接子任务',
+                                    key: ValueKey<String>(
+                                      'event-header-count-${node.id}',
+                                    ),
+                                    style: TextStyle(
+                                      color: widget.focusMode
+                                          ? AppTheme.accent
+                                          : colors.faint,
+                                      fontSize: 11,
+                                      height: 1.45,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  '$completed / ${leaves.length} 已完成',
+                                  key: ValueKey<String>(
+                                    'event-header-completed-${node.id}',
+                                  ),
+                                  style: TextStyle(
+                                    color: colors.muted,
+                                    fontSize: 11,
+                                    height: 1.45,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (abandoned > 0 || node.deadline != null) ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  if (abandoned > 0)
+                                    Text(
+                                      '$abandoned 已放弃',
+                                      style: TextStyle(
+                                        color: colors.faint,
+                                        fontSize: 10,
+                                      ),
+                                    ),
+                                  const Spacer(),
+                                  _DeadlineLabel(node: node, now: now),
+                                ],
+                              ),
+                            ],
+                            const SizedBox(height: 6),
+                            ClipRRect(
+                              key: ValueKey<String>(
+                                'event-header-progress-${node.id}',
+                              ),
+                              borderRadius: BorderRadius.circular(2),
+                              child: LinearProgressIndicator(
+                                value: progress,
+                                minHeight: 3,
+                                color: color,
+                                backgroundColor: colors.borderSoft,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
