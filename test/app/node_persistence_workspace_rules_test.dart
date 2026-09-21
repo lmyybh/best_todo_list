@@ -27,6 +27,54 @@ void main() {
 
   tearDown(() => workspace.close());
 
+  test('事件色相分散且新增、排序、归档不会改变已有颜色', () async {
+    final events = <TodoNode>[];
+    for (var i = 0; i < 11; i++) {
+      events.add(
+        await expectWriteSuccess(workspace.createNode(title: '事件 $i')),
+      );
+    }
+    final hues = events.map((node) => node.eventHue!).toList()..sort();
+    for (var i = 0; i < hues.length; i++) {
+      final next = i + 1 < hues.length ? hues[i + 1] : hues.first + 360;
+      expect(next - hues[i], greaterThanOrEqualTo(22.5));
+    }
+    await expectWriteSuccess(
+      workspace.reorderChildren(
+        null,
+        events.reversed.map((node) => node.id).toList(),
+      ),
+    );
+    await expectWriteSuccess(workspace.setEventArchived(events.first.id, true));
+    await expectWriteSuccess(workspace.createNode(title: '新事件'));
+    final saved = await repository.loadNodes();
+    for (final event in events) {
+      expect(workspace.tree.nodes[event.id]!.eventHue, event.eventHue);
+      expect(
+        saved.singleWhere((node) => node.id == event.id).eventHue,
+        event.eventHue,
+      );
+    }
+  });
+
+  test('收起仅允许已完成任务，恢复未完成时取消收起', () async {
+    final node = await expectWriteSuccess(workspace.createNode(title: '任务'));
+    expect(
+      await workspace.setTaskArchived(node.id, true),
+      isA<NodeWriteFailure>(),
+    );
+    await expectWriteSuccess(
+      workspace.setNodeStatus(node.id, TodoNodeStatus.completed),
+    );
+    await expectWriteSuccess(workspace.setTaskArchived(node.id, true));
+    expect(workspace.tree.nodes[node.id]!.isArchived, isTrue);
+    expect((await repository.loadNodes()).single.isArchived, isTrue);
+    await expectWriteSuccess(
+      workspace.setNodeStatus(node.id, TodoNodeStatus.active),
+    );
+    expect(workspace.tree.nodes[node.id]!.isArchived, isFalse);
+  });
+
   test('标题 trim 后不能为空', () async {
     final result = await workspace.createNode(title: '   ');
 

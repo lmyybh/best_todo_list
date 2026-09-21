@@ -183,6 +183,20 @@ class AppController extends ChangeNotifier {
     TodoNodeStatus status,
   ) => _write(_workspace.setNodeStatus(nodeId, status));
 
+  Future<NodeWriteResult<void>> setEventArchived(
+    String eventId,
+    bool archived,
+  ) => _write(_workspace.setEventArchived(eventId, archived));
+
+  Future<NodeWriteResult<void>> setTaskArchived(String nodeId, bool archived) =>
+      _write(_workspace.setTaskArchived(nodeId, archived));
+
+  Future<NodeWriteResult<List<String>>> archiveCompletedTasks(String eventId) =>
+      _write(_workspace.archiveCompletedTasks(eventId));
+
+  Future<NodeWriteResult<void>> restoreArchivedTasks(List<String> nodeIds) =>
+      _write(_workspace.restoreArchivedTasks(nodeIds));
+
   Future<NodeWriteResult<DeletedSubtree>> delete(String nodeId) => _write(
     _workspace.deleteSubtree(nodeId),
     onSuccess: (deletion) {

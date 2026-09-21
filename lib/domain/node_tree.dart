@@ -33,6 +33,15 @@ class NodeTree {
   Iterable<TodoNode> visibleDescendantsOf(String nodeId) =>
       descendantsOf(nodeId).where((node) => !isEffectivelyAbandoned(node.id));
 
+  Iterable<TodoNode> archivableCompletedTasks(String eventId) sync* {
+    for (final child in visibleChildrenOf(eventId)) {
+      final complete = isComplete(child.id);
+      if (child.isArchived && complete) continue;
+      if (complete) yield child;
+      yield* archivableCompletedTasks(child.id);
+    }
+  }
+
   bool isEffectivelyAbandoned(String nodeId) {
     TodoNode? current = nodes[nodeId];
     while (current != null) {

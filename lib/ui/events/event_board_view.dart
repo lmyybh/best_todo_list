@@ -51,6 +51,7 @@ class _EventBoardViewState extends State<EventBoardView> {
   Offset? latestDragPosition;
   late EventBoardFilter selectedFilter;
   bool focusBoardBuilt = false;
+  bool showArchivedEvents = false;
   Object? allBoardCacheKey;
   Widget? allBoardCache;
   Object? focusBoardCacheKey;
@@ -75,13 +76,18 @@ class _EventBoardViewState extends State<EventBoardView> {
   @override
   Widget build(BuildContext context) {
     final sourceTree = widget.controller.tree;
-    final allRoots = sourceTree.visibleChildrenOf(null);
+    final roots = sourceTree.visibleChildrenOf(null);
+    final archivedCount = roots.where((node) => node.isEventArchived).length;
+    final allRoots = roots
+        .where((node) => node.isEventArchived == showArchivedEvents)
+        .toList();
     final todayFocus = TodayFocusProjection.from(
       source: sourceTree,
       roots: allRoots,
       now: widget.controller.now,
     );
-    final focusMode = selectedFilter == EventBoardFilter.todayFocus;
+    final focusMode =
+        !showArchivedEvents && selectedFilter == EventBoardFilter.todayFocus;
     final allRootsById = <String, TodoNode>{
       for (final root in allRoots) root.id: root,
     };
@@ -117,6 +123,7 @@ class _EventBoardViewState extends State<EventBoardView> {
             maxHeight: maxHeight,
             tree: sourceTree,
             roots: orderedAllRoots,
+            includeNewEventCard: !showArchivedEvents,
           );
           final focusLayout = const EventBoardLayout().project(
             maxWidth: constraints.maxWidth,
@@ -136,6 +143,7 @@ class _EventBoardViewState extends State<EventBoardView> {
               ? const Duration(milliseconds: 140)
               : Duration.zero;
           final cacheKey = (
+            showArchivedEvents,
             sourceTree,
             orderedAllIds.join('\u0000'),
             allLayout.gridWidth,
@@ -155,7 +163,7 @@ class _EventBoardViewState extends State<EventBoardView> {
               animationDuration: layoutAnimationDuration,
               focusMode: false,
               todayFocus: todayFocus,
-              includeNewEventCard: true,
+              includeNewEventCard: !showArchivedEvents,
               stackKey: boardKey,
             );
           }
@@ -212,6 +220,14 @@ class _EventBoardViewState extends State<EventBoardView> {
                         selected: selectedFilter,
                         todayEventCount: todayFocus.roots.length,
                         onSelected: _setFilter,
+                        archivedCount: archivedCount,
+                        archivedView: showArchivedEvents,
+                        onToggleArchived: () {
+                          _cancelEventDrag();
+                          setState(
+                            () => showArchivedEvents = !showArchivedEvents,
+                          );
+                        },
                       ),
                       const SizedBox(height: 16),
                       Visibility(
@@ -261,6 +277,17 @@ class _EventBoardViewState extends State<EventBoardView> {
     required bool includeNewEventCard,
     Key? stackKey,
   }) {
+    if (showArchivedEvents && allRoots.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 48),
+        child: Center(
+          child: Text(
+            '暂无已归档事件',
+            style: TextStyle(color: AppColors.of(context).muted, fontSize: 12),
+          ),
+        ),
+      );
+    }
     if (allRoots.isEmpty) {
       return _EmptyBoard(onCreate: () => _createEvent(context));
     }
@@ -321,9 +348,7 @@ class _EventBoardViewState extends State<EventBoardView> {
       node: item!,
       tree: displayTree,
       now: widget.controller.now,
-      color:
-          _eventColors[allRoots.indexWhere((root) => root.id == item.id) %
-              _eventColors.length],
+      color: _eventColor(item),
       dropTargeted: dropTargeted,
       focusMode: focusMode,
       todayTaskCount: todayTaskCount,
@@ -534,12 +559,18 @@ class _EventBoardToolbar extends StatelessWidget {
     required this.selected,
     required this.todayEventCount,
     required this.onSelected,
+    required this.archivedCount,
+    required this.archivedView,
+    required this.onToggleArchived,
   });
 
   final int eventCount;
   final EventBoardFilter selected;
   final int todayEventCount;
   final ValueChanged<EventBoardFilter> onSelected;
+  final int archivedCount;
+  final bool archivedView;
+  final VoidCallback onToggleArchived;
 
   @override
   Widget build(BuildContext context) {
@@ -549,54 +580,113 @@ class _EventBoardToolbar extends StatelessWidget {
       height: 32,
       child: Row(
         children: <Widget>[
-          const Text(
-            '事件',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '$eventCount 个事件',
-            style: TextStyle(color: colors.faint, fontSize: 11),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                archivedView ? '已归档' : '事件',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '$eventCount 个事件',
+                style: TextStyle(
+                  color: colors.faint,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w400,
+                  letterSpacing: 0,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(width: 8),
+              _EventArchiveLink(
+                label: archivedView ? '返回事件' : '已归档 $archivedCount',
+                onPressed: onToggleArchived,
+              ),
+            ],
           ),
           const Spacer(),
-          Tooltip(
-            message: '今日包含今天截止和已经逾期的未完成任务',
-            child: SizedBox(
-              key: const ValueKey<String>('event-board-filter'),
-              width: 122,
-              height: 32,
-              child: MouseRegion(
-                key: const ValueKey<String>('event-board-filter-cursor'),
-                cursor: SystemMouseCursors.click,
-                child: CupertinoSlidingSegmentedControl<EventBoardFilter>(
-                  key: const ValueKey<String>('event-board-filter-control'),
-                  groupValue: selected,
-                  backgroundColor: const Color(0xFFECEDE9),
-                  thumbColor: const Color(0xFFC9DED9),
-                  padding: const EdgeInsets.all(2),
-                  proportionalWidth: true,
-                  onValueChanged: (value) {
-                    if (value != null) onSelected(value);
-                  },
-                  children: <EventBoardFilter, Widget>{
-                    EventBoardFilter.all: _EventBoardFilterLabel(
-                      label: '全部',
-                      selected: selected == EventBoardFilter.all,
-                    ),
-                    EventBoardFilter.todayFocus: _EventBoardFilterLabel(
-                      label: '今日',
-                      count: todayEventCount,
-                      selected: selected == EventBoardFilter.todayFocus,
-                    ),
-                  },
+          if (!archivedView)
+            Tooltip(
+              message: '今日包含今天截止和已经逾期的未完成任务',
+              child: SizedBox(
+                key: const ValueKey<String>('event-board-filter'),
+                width: 122,
+                height: 32,
+                child: MouseRegion(
+                  key: const ValueKey<String>('event-board-filter-cursor'),
+                  cursor: SystemMouseCursors.click,
+                  child: CupertinoSlidingSegmentedControl<EventBoardFilter>(
+                    key: const ValueKey<String>('event-board-filter-control'),
+                    groupValue: selected,
+                    backgroundColor: const Color(0xFFECEDE9),
+                    thumbColor: const Color(0xFFC9DED9),
+                    padding: const EdgeInsets.all(2),
+                    proportionalWidth: true,
+                    onValueChanged: (value) {
+                      if (value != null) onSelected(value);
+                    },
+                    children: <EventBoardFilter, Widget>{
+                      EventBoardFilter.all: _EventBoardFilterLabel(
+                        label: '全部',
+                        selected: selected == EventBoardFilter.all,
+                      ),
+                      EventBoardFilter.todayFocus: _EventBoardFilterLabel(
+                        label: '今日',
+                        count: todayEventCount,
+                        selected: selected == EventBoardFilter.todayFocus,
+                      ),
+                    },
+                  ),
                 ),
               ),
             ),
-          ),
         ],
       ),
     );
   }
+}
+
+class _EventArchiveLink extends StatefulWidget {
+  const _EventArchiveLink({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  State<_EventArchiveLink> createState() => _EventArchiveLinkState();
+}
+
+class _EventArchiveLinkState extends State<_EventArchiveLink> {
+  bool hovered = false;
+  bool focused = false;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    key: const ValueKey<String>('event-archived-view'),
+    onTap: widget.onPressed,
+    onHover: (value) => setState(() => hovered = value),
+    onFocusChange: (value) => setState(() => focused = value),
+    mouseCursor: SystemMouseCursors.click,
+    overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+    splashFactory: NoSplash.splashFactory,
+    child: Text(
+      widget.label,
+      style: TextStyle(
+        color: hovered || focused
+            ? Theme.of(context).colorScheme.primary
+            : AppColors.of(context).faint,
+        fontSize: 11,
+        fontWeight: FontWeight.w400,
+        letterSpacing: 0,
+        height: 1.4,
+      ),
+    ),
+  );
 }
 
 class _EventBoardFilterLabel extends StatelessWidget {
@@ -666,14 +756,24 @@ class _EventBoardFilterLabel extends StatelessWidget {
   }
 }
 
-const _eventColors = <Color>[
-  Color(0xFFC97967),
-  Color(0xFF8D7E9F),
-  Color(0xFFB58A43),
-  Color(0xFF718D72),
-  Color(0xFF568B8A),
-  Color(0xFF7784A5),
-];
+Color _eventColor(TodoNode node) {
+  var seed = 2166136261;
+  for (final unit in node.id.codeUnits) {
+    seed = ((seed ^ unit) * 16777619) & 0xffffffff;
+  }
+  double next() {
+    seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+    return seed / 4294967296;
+  }
+
+  final fallbackHue = next() * 360;
+  return HSVColor.fromAHSV(
+    1,
+    node.eventHue ?? fallbackHue,
+    0.40 + next() * 0.05,
+    0.70 + next() * 0.05,
+  ).toColor();
+}
 
 class _EventCard extends StatefulWidget {
   const _EventCard({
@@ -725,6 +825,9 @@ class _EventCardState extends State<_EventCard> {
     final node = widget.node;
     final tree = widget.tree;
     final sourceTree = controller.tree;
+    final canArchiveCompleted = sourceTree
+        .archivableCompletedTasks(node.id)
+        .isNotEmpty;
     final now = widget.now;
     final color = widget.color;
     final dropTargeted = widget.dropTargeted;
@@ -976,42 +1079,99 @@ class _EventCardState extends State<_EventCard> {
                                   ),
                           ),
                           if (!widget.focusMode)
-                            MenuAnchor(
-                              menuChildren: <Widget>[
-                                MenuItemButton(
-                                  onPressed: () =>
-                                      _renameNode(context, controller, node),
-                                  child: const Text('重命名'),
+                            PopupMenuButton<String>(
+                              key: ValueKey<String>('event-menu-${node.id}'),
+                              tooltip: '任务操作',
+                              color: Theme.of(context).colorScheme.surface,
+                              surfaceTintColor: Colors.transparent,
+                              elevation: 1,
+                              shadowColor: Colors.black.withValues(alpha: 0.08),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(6),
+                                side: BorderSide(
+                                  color: colors.borderSoft,
+                                  width: 0.5,
                                 ),
-                                MenuItemButton(
-                                  onPressed: () =>
-                                      _abandonTask(context, controller, node),
-                                  leadingIcon: const Icon(
-                                    Icons.block_outlined,
-                                    size: 17,
-                                  ),
-                                  child: const Text('放弃任务'),
-                                ),
-                                MenuItemButton(
-                                  onPressed: () => confirmDeleteNode(
+                              ),
+                              menuPadding: const EdgeInsets.symmetric(
+                                vertical: 3,
+                              ),
+                              position: PopupMenuPosition.under,
+                              offset: const Offset(0, 4),
+                              padding: EdgeInsets.zero,
+                              style: IconButton.styleFrom(
+                                minimumSize: const Size(28, 30),
+                                maximumSize: const Size(28, 30),
+                                visualDensity: VisualDensity.compact,
+                                padding: EdgeInsets.zero,
+                                enabledMouseCursor: SystemMouseCursors.click,
+                              ),
+                              constraints: BoxConstraints.tightFor(width: 84),
+                              icon: Icon(
+                                Icons.more_horiz,
+                                size: 16,
+                                color: colors.muted,
+                              ),
+                              onSelected: (value) {
+                                if (value == 'rename') {
+                                  _renameNode(context, controller, node);
+                                } else if (value == 'archiveEvent') {
+                                  _setEventArchived(context, controller, node);
+                                } else if (value == 'archiveCompleted') {
+                                  _archiveCompletedTasks(
                                     context,
                                     controller,
                                     node,
+                                  );
+                                } else if (value == 'abandon') {
+                                  _abandonTask(context, controller, node);
+                                } else if (value == 'delete') {
+                                  confirmDeleteNode(context, controller, node);
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                for (final (value, label) in [
+                                  ('rename', '重命名'),
+                                  (
+                                    'archiveEvent',
+                                    node.isEventArchived ? '恢复事件' : '归档事件',
                                   ),
-                                  child: const Text('删除'),
-                                ),
+                                  ('archiveCompleted', '收起已完成'),
+                                  ('abandon', '放弃'),
+                                  ('delete', '删除'),
+                                ])
+                                  PopupMenuItem(
+                                    value: value,
+                                    enabled:
+                                        value != 'archiveCompleted' ||
+                                        canArchiveCompleted,
+                                    height: 28,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                    ),
+                                    mouseCursor:
+                                        value == 'archiveCompleted' &&
+                                            !canArchiveCompleted
+                                        ? SystemMouseCursors.basic
+                                        : SystemMouseCursors.click,
+                                    labelTextStyle: WidgetStatePropertyAll(
+                                      TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w400,
+                                        color:
+                                            value == 'archiveCompleted' &&
+                                                !canArchiveCompleted
+                                            ? Theme.of(context).disabledColor
+                                            : value == 'delete'
+                                            ? colors.danger
+                                            : Theme.of(
+                                                context,
+                                              ).colorScheme.onSurface,
+                                      ),
+                                    ),
+                                    child: Text(label),
+                                  ),
                               ],
-                              builder: (context, menu, _) => IconButton(
-                                key: ValueKey<String>('event-menu-${node.id}'),
-                                tooltip: '任务操作',
-                                onPressed: menu.open,
-                                visualDensity: VisualDensity.compact,
-                                icon: Icon(
-                                  Icons.more_horiz,
-                                  size: 17,
-                                  color: colors.muted,
-                                ),
-                              ),
                             ),
                         ],
                       ),
@@ -1052,6 +1212,47 @@ class _EventCardState extends State<_EventCard> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _setEventArchived(
+  BuildContext context,
+  AppController controller,
+  TodoNode node,
+) async {
+  final archived = !node.isEventArchived;
+  final messenger = ScaffoldMessenger.of(context);
+  final result = await controller.setEventArchived(node.id, archived);
+  if (!messenger.mounted || result is NodeWriteFailure) return;
+  messenger.showSnackBar(
+    SnackBar(
+      content: Text(archived ? '事件已归档' : '事件已恢复'),
+      action: SnackBarAction(
+        label: '撤销',
+        onPressed: () => controller.setEventArchived(node.id, !archived),
+      ),
+    ),
+  );
+}
+
+Future<void> _archiveCompletedTasks(
+  BuildContext context,
+  AppController controller,
+  TodoNode node,
+) async {
+  final result = await controller.archiveCompletedTasks(node.id);
+  if (!context.mounted) return;
+  if (result case NodeWriteSuccess<List<String>>(:final value)) {
+    if (value.isEmpty) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('已收起 ${value.length} 项已完成任务'),
+        action: SnackBarAction(
+          label: '撤销',
+          onPressed: () => controller.restoreArchivedTasks(value),
         ),
       ),
     );

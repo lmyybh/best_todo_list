@@ -89,6 +89,7 @@ class NodePersistenceWorkspace {
       createdAt: now,
       updatedAt: now,
       manualOrder: order,
+      eventHue: parentId == null ? _nextEventHue(_nodes) : null,
     );
     final changes = <TodoNode>[node];
     if (parent?.completedAt != null && currentTree.isLeaf(parent!.id)) {
@@ -142,10 +143,53 @@ class NodePersistenceWorkspace {
         clearCompletedAt: status != TodoNodeStatus.completed,
         abandonedAt: status == TodoNodeStatus.abandoned ? now : null,
         clearAbandonedAt: status != TodoNodeStatus.abandoned,
+        isArchived: false,
         updatedAt: now,
       ),
     ]);
   });
+
+  Future<NodeWriteResult<void>> setEventArchived(
+    String eventId,
+    bool archived,
+  ) => _updateNode(eventId, (node, now) {
+    if (node.parentId != null) {
+      throw const NodeRuleException('只能归档事件卡片');
+    }
+    return node.copyWith(isEventArchived: archived, updatedAt: now);
+  });
+
+  Future<NodeWriteResult<void>> setTaskArchived(String nodeId, bool archived) =>
+      _updateNode(nodeId, (node, now) {
+        if (archived && !tree.isComplete(nodeId)) {
+          throw const NodeRuleException('只能收起已完成的任务');
+        }
+        return node.copyWith(isArchived: archived, updatedAt: now);
+      });
+
+  Future<NodeWriteResult<List<String>>> archiveCompletedTasks(String eventId) =>
+      _write(() {
+        final currentTree = tree;
+        final now = _clock().toUtc();
+        final tasks = currentTree.archivableCompletedTasks(eventId).toList();
+        return _NodeMutation<List<String>>(
+          tasks.map((node) => node.id).toList(),
+          tasks
+              .map((node) => node.copyWith(isArchived: true, updatedAt: now))
+              .toList(),
+        );
+      });
+
+  Future<NodeWriteResult<void>> restoreArchivedTasks(List<String> nodeIds) =>
+      _write(() {
+        final currentTree = tree;
+        final now = _clock().toUtc();
+        return _NodeMutation<void>(null, [
+          for (final id in nodeIds)
+            if (currentTree.nodes[id] case final node?)
+              node.copyWith(isArchived: false, updatedAt: now),
+        ]);
+      });
 
   Future<NodeWriteResult<DeletedSubtree>> deleteSubtree(String nodeId) =>
       _write(() {
@@ -204,6 +248,9 @@ class NodePersistenceWorkspace {
         target[index].copyWith(
           parentId: newParentId,
           clearParentId: newParentId == null,
+          eventHue: newParentId == null && target[index].eventHue == null
+              ? _nextEventHue(_nodes)
+              : target[index].eventHue,
           manualOrder: (index + 1) * 1000,
           updatedAt: now,
         ),
@@ -331,12 +378,45 @@ class NodePersistenceWorkspace {
 
   Future<List<TodoNode>> _loadNodes() async {
     try {
-      _nodes = _sorted(await _repository.loadNodes());
+      final loaded = _sorted(await _repository.loadNodes()).toList();
+      final changes = <TodoNode>[];
+      for (var i = 0; i < loaded.length; i++) {
+        final node = loaded[i];
+        if (node.parentId == null && node.eventHue == null) {
+          loaded[i] = node.copyWith(eventHue: _nextEventHue(loaded));
+          changes.add(loaded[i]);
+        }
+      }
+      if (changes.isNotEmpty) await _repository.saveNodesAtomically(changes);
+      _nodes = loaded;
       _loaded = true;
       return nodes;
     } finally {
       if (!_loaded) _loadFuture = null;
     }
+  }
+
+  // Fill the largest unused hue interval without recoloring existing events.
+  static double _nextEventHue(Iterable<TodoNode> nodes) {
+    final hues =
+        nodes
+            .where((node) => node.parentId == null)
+            .map((node) => node.eventHue)
+            .whereType<double>()
+            .toList()
+          ..sort();
+    if (hues.isEmpty) return 20;
+    var largestGap = -1.0;
+    var hue = 20.0;
+    for (var i = 0; i < hues.length; i++) {
+      final end = i + 1 < hues.length ? hues[i + 1] : hues.first + 360;
+      final gap = end - hues[i];
+      if (gap > largestGap) {
+        largestGap = gap;
+        hue = (hues[i] + gap / 2) % 360;
+      }
+    }
+    return hue;
   }
 
   static List<TodoNode> _sorted(Iterable<TodoNode> nodes) {

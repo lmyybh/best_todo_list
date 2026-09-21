@@ -19,7 +19,7 @@ class UnsupportedDatabaseVersion implements Exception {
 }
 
 class AppDatabase {
-  static const int currentVersion = 5;
+  static const int currentVersion = 8;
 
   static Future<Database> open({String? path}) async {
     sqfliteFfiInit();
@@ -37,12 +37,14 @@ class AppDatabase {
           await _createNodeIndexes(database);
         },
         onUpgrade: (database, oldVersion, newVersion) async {
-          if (oldVersion >= 1 && oldVersion <= 4 && newVersion == 5) {
+          if (oldVersion >= 1 && oldVersion <= 7 && newVersion == 8) {
             if (oldVersion < 4) {
               await _migrateLegacyDeadlines(database, oldVersion);
             }
             final columns = {
-              for (final row in await database.rawQuery('PRAGMA table_info(nodes)'))
+              for (final row in await database.rawQuery(
+                'PRAGMA table_info(nodes)',
+              ))
                 row['name'] as String,
             };
             if (!columns.contains('abandoned_at')) {
@@ -53,6 +55,21 @@ class AppDatabase {
             await database.execute(
               'CREATE INDEX IF NOT EXISTS nodes_abandoned_idx ON nodes(abandoned_at, deleted_at)',
             );
+            if (!columns.contains('is_archived')) {
+              await database.execute(
+                'ALTER TABLE nodes ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0',
+              );
+            }
+            if (!columns.contains('is_event_archived')) {
+              await database.execute(
+                'ALTER TABLE nodes ADD COLUMN is_event_archived INTEGER NOT NULL DEFAULT 0',
+              );
+            }
+            if (!columns.contains('event_hue')) {
+              await database.execute(
+                'ALTER TABLE nodes ADD COLUMN event_hue REAL NULL',
+              );
+            }
             return;
           }
           throw UnsupportedDatabaseVersion(
@@ -179,6 +196,9 @@ Future<void> _createNodesTable(DatabaseExecutor database) =>
     updated_at INTEGER NOT NULL,
     completed_at INTEGER NULL,
     abandoned_at INTEGER NULL,
+    is_archived INTEGER NOT NULL DEFAULT 0,
+    is_event_archived INTEGER NOT NULL DEFAULT 0,
+    event_hue REAL NULL,
     deleted_at INTEGER NULL,
     manual_order INTEGER NOT NULL,
     FOREIGN KEY (parent_id) REFERENCES nodes(id),

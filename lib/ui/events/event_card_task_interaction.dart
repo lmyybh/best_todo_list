@@ -37,6 +37,9 @@ class EventCardTaskInteraction extends StatefulWidget {
 }
 
 class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
+  bool showArchived = false;
+  bool quickAddExpanded = false;
+  int previousArchivedCount = 0;
   final Set<String> collapsedIds = <String>{};
   final Set<String> expandedBeyondPreviewIds = <String>{};
   final ScrollController treeScrollController = ScrollController();
@@ -327,6 +330,24 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
     );
   }
 
+  Future<void> _archiveTaskNode(TodoNode node) async {
+    _syncEditingText();
+    if (!await editingSession.finishActive() || !mounted) return;
+    final archived = !node.isArchived;
+    final result = await widget.controller.setTaskArchived(node.id, archived);
+    if (!mounted || result is NodeWriteFailure || !archived) return;
+    setState(() => showArchived = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('任务已收起'),
+        action: SnackBarAction(
+          label: '撤销',
+          onPressed: () => widget.controller.setTaskArchived(node.id, false),
+        ),
+      ),
+    );
+  }
+
   void _syncEditingText() {
     if (editingSession.draftParentId != null) {
       editingSession.updateDraft(inlineDraftController.text);
@@ -371,11 +392,24 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
     final controller = widget.controller;
     final tree = widget.displayTree ?? controller.tree;
     final children = tree.visibleChildrenOf(widget.rootEventId);
+    final archivedCount = tree
+        .descendantsOf(widget.rootEventId)
+        .where(
+          (node) =>
+              node.isArchived &&
+              tree.isComplete(node.id) &&
+              !tree.isEffectivelyAbandoned(node.id),
+        )
+        .length;
+    if (archivedCount > previousArchivedCount) showArchived = false;
+    previousArchivedCount = archivedCount;
     final colors = AppColors.of(context);
     final interaction = _EventTaskTreeInteraction(
       controller: controller,
       tree: tree,
       focusMode: widget.focusMode,
+      showArchived: showArchived,
+      onArchive: (task) => unawaited(_archiveTaskNode(task)),
       collapsedIds: collapsedIds,
       expandedBeyondPreviewIds: expandedBeyondPreviewIds,
       highlightedId: highlightedId,
@@ -472,12 +506,64 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
                   child: treeContent,
                 ),
         ),
-        if (!widget.focusMode)
-          _CardQuickAdd(
-            controller: controller,
-            parentId: widget.rootEventId,
-            onCreated: highlightCreated,
-          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (!widget.focusMode)
+              Expanded(
+                child: _CardQuickAdd(
+                  controller: controller,
+                  parentId: widget.rootEventId,
+                  onCreated: highlightCreated,
+                  onExpandedChanged: (value) =>
+                      setState(() => quickAddExpanded = value),
+                ),
+              )
+            else
+              const Spacer(),
+            if (archivedCount > 0 && !quickAddExpanded)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(0, 0, 11, 12),
+                child: TextButton(
+                  key: ValueKey<String>('event-archived-${widget.rootEventId}'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: colors.muted,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    visualDensity: VisualDensity.compact,
+                    textStyle: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w400,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                  onPressed: () => setState(() {
+                    showArchived = !showArchived;
+                    if (showArchived) {
+                      collapsedIds.clear();
+                      expandedBeyondPreviewIds.addAll(
+                        tree
+                            .descendantsOf(widget.rootEventId)
+                            .map((node) => node.id),
+                      );
+                    }
+                  }),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('已收起 $archivedCount 项'),
+                      const SizedBox(width: 4),
+                      Icon(
+                        showArchived ? Icons.expand_less : Icons.expand_more,
+                        size: 14,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
       ],
     );
   }
@@ -488,6 +574,8 @@ class _EventTaskTreeInteraction {
     required this.controller,
     required this.tree,
     required this.focusMode,
+    required this.showArchived,
+    required this.onArchive,
     required this._collapsedIds,
     required this._expandedBeyondPreviewIds,
     required this._highlightedId,
@@ -505,6 +593,14 @@ class _EventTaskTreeInteraction {
   final AppController controller;
   final NodeTree tree;
   final bool focusMode;
+  final bool showArchived;
+  final ValueChanged<TodoNode> onArchive;
+  List<TodoNode> visibleChildren(String parentId) => tree
+      .visibleChildrenOf(parentId)
+      .where(
+        (node) => showArchived || !node.isArchived || !tree.isComplete(node.id),
+      )
+      .toList();
   final Set<String> _collapsedIds;
   final Set<String> _expandedBeyondPreviewIds;
   final String? _highlightedId;
@@ -524,11 +620,11 @@ class _EventTaskTreeInteraction {
           depth < _maximumPreviewDepth ||
           _expandedBeyondPreviewIds.contains(nodeId));
 
-  bool canExpand(TodoNode node) => tree.visibleChildrenOf(node.id).isNotEmpty;
+  bool canExpand(TodoNode node) => visibleChildren(node.id).isNotEmpty;
 
   bool showsChildren(TodoNode node, int depth) =>
       isExpanded(node.id, depth) &&
-      (tree.visibleChildrenOf(node.id).isNotEmpty || showsDraft(node.id));
+      (visibleChildren(node.id).isNotEmpty || showsDraft(node.id));
 
   bool showsDraft(String parentId) =>
       !focusMode && _inlineDraftParentId == parentId;
@@ -575,7 +671,7 @@ class _EventTaskGroupState extends State<_EventTaskGroup> {
   @override
   Widget build(BuildContext context) {
     final interaction = widget.interaction;
-    final children = interaction.tree.visibleChildrenOf(widget.parentId);
+    final children = interaction.visibleChildren(widget.parentId);
     final showsInlineDraft = interaction.showsDraft(widget.parentId);
     final rootGroup = widget.scrollController != null;
     return ListView.builder(
@@ -740,25 +836,14 @@ class _EventTreeRowState extends State<_EventTreeRow> {
     final onToggleExpanded = interaction.canExpand(node)
         ? () => interaction.toggleExpanded(node.id, depth)
         : null;
-    final children = tree.visibleChildrenOf(node.id);
+    final children = interaction.visibleChildren(node.id);
     final isLeaf = tree.isLeaf(node.id);
     final hiddenDescendants = tree
         .descendantsOf(node.id)
         .where((descendant) => !descendant.isAbandoned)
         .length;
     final complete = tree.isComplete(node.id);
-    final showActions =
-        !interaction.focusMode && (hovered || focused) && !renaming;
-    final deleteButtonStyle = ButtonStyle(
-      foregroundColor: WidgetStateProperty.resolveWith(
-        (states) =>
-            states.contains(WidgetState.hovered) ? colors.danger : colors.muted,
-      ),
-      overlayColor: WidgetStateProperty.resolveWith(
-        (states) =>
-            states.contains(WidgetState.hovered) ? colors.dangerSoft : null,
-      ),
-    );
+    final showActions = !interaction.focusMode && !renaming;
     final row = Focus(
       key: ValueKey<String>('event-row-focus-${node.id}'),
       focusNode: focusNode,
@@ -1007,25 +1092,6 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                             children: <Widget>[
                               IconButton(
                                 key: ValueKey<String>(
-                                  'event-abandon-task-${node.id}',
-                                ),
-                                tooltip: '放弃任务',
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints.tightFor(
-                                  width: 28,
-                                  height: 30,
-                                ),
-                                visualDensity: VisualDensity.compact,
-                                mouseCursor: SystemMouseCursors.click,
-                                onPressed: () => interaction.abandon(node),
-                                icon: Icon(
-                                  Icons.block_outlined,
-                                  size: 16,
-                                  color: colors.muted,
-                                ),
-                              ),
-                              IconButton(
-                                key: ValueKey<String>(
                                   'event-add-child-${node.id}',
                                 ),
                                 tooltip: '新建子任务',
@@ -1044,25 +1110,135 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                                   color: colors.muted,
                                 ),
                               ),
-                              IconButton(
+                              PopupMenuButton<String>(
                                 key: ValueKey<String>(
-                                  'event-delete-task-${node.id}',
+                                  'event-more-task-${node.id}',
                                 ),
-                                tooltip: '删除任务',
+                                tooltip: '更多',
+                                color: Theme.of(context).colorScheme.surface,
+                                surfaceTintColor: Colors.transparent,
+                                elevation: 1,
+                                shadowColor: Colors.black.withValues(
+                                  alpha: 0.08,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                  side: BorderSide(
+                                    color: colors.borderSoft,
+                                    width: 0.5,
+                                  ),
+                                ),
+                                menuPadding: const EdgeInsets.symmetric(
+                                  vertical: 3,
+                                ),
+                                position: PopupMenuPosition.under,
+                                offset: const Offset(0, 4),
                                 padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints.tightFor(
-                                  width: 28,
-                                  height: 30,
+                                style: IconButton.styleFrom(
+                                  minimumSize: const Size(28, 30),
+                                  maximumSize: const Size(28, 30),
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  enabledMouseCursor: SystemMouseCursors.click,
                                 ),
-                                visualDensity: VisualDensity.compact,
-                                mouseCursor: SystemMouseCursors.click,
-                                style: deleteButtonStyle,
-                                onPressed: () => interaction.delete(node),
-                                icon: const Icon(
-                                  Icons.delete_outline,
+                                constraints: const BoxConstraints(
+                                  minWidth: 48,
+                                  maxWidth: 48,
+                                ),
+                                icon: Icon(
+                                  Icons.more_horiz,
                                   size: 16,
+                                  color: colors.muted,
                                 ),
+                                onSelected: (value) {
+                                  if (value == 'archive') {
+                                    interaction.onArchive(node);
+                                  }
+                                  if (value == 'abandon') {
+                                    interaction.abandon(node);
+                                  }
+                                  if (value == 'delete') {
+                                    interaction.delete(node);
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  PopupMenuItem(
+                                    key: ValueKey<String>(
+                                      'event-archive-task-${node.id}',
+                                    ),
+                                    value: 'archive',
+                                    enabled: complete || node.isArchived,
+                                    mouseCursor: complete || node.isArchived
+                                        ? SystemMouseCursors.click
+                                        : SystemMouseCursors.basic,
+                                    height: 28,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                    ),
+                                    labelTextStyle: WidgetStatePropertyAll(
+                                      TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w400,
+                                        color: !complete && !node.isArchived
+                                            ? Theme.of(context).disabledColor
+                                            : Theme.of(
+                                                context,
+                                              ).colorScheme.onSurface,
+                                      ),
+                                    ),
+                                    child: Text(node.isArchived ? '移回' : '收起'),
+                                  ),
+                                  PopupMenuItem(
+                                    key: ValueKey<String>(
+                                      'event-abandon-task-${node.id}',
+                                    ),
+                                    value: 'abandon',
+                                    enabled: !complete && !node.isArchived,
+                                    mouseCursor: !complete && !node.isArchived
+                                        ? SystemMouseCursors.click
+                                        : SystemMouseCursors.basic,
+                                    height: 28,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                    ),
+                                    labelTextStyle: WidgetStatePropertyAll(
+                                      TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w400,
+                                        color: complete || node.isArchived
+                                            ? Theme.of(context).disabledColor
+                                            : Theme.of(
+                                                context,
+                                              ).colorScheme.onSurface,
+                                      ),
+                                    ),
+                                    child: const Text('放弃'),
+                                  ),
+                                  PopupMenuItem(
+                                    key: ValueKey<String>(
+                                      'event-delete-task-${node.id}',
+                                    ),
+                                    value: 'delete',
+                                    mouseCursor: SystemMouseCursors.click,
+                                    height: 28,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                    ),
+                                    labelTextStyle: WidgetStatePropertyAll(
+                                      TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w400,
+                                        color: colors.danger,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      '删除',
+                                      style: TextStyle(color: colors.danger),
+                                    ),
+                                  ),
+                                ],
                               ),
+                              const SizedBox(width: 6),
                             ],
                           ),
                         ),
@@ -1329,11 +1505,13 @@ class _CardQuickAdd extends StatefulWidget {
     required this.controller,
     required this.parentId,
     required this.onCreated,
+    required this.onExpandedChanged,
   });
 
   final AppController controller;
   final String parentId;
   final ValueChanged<String> onCreated;
+  final ValueChanged<bool> onExpandedChanged;
 
   @override
   State<_CardQuickAdd> createState() => _CardQuickAddState();
@@ -1344,14 +1522,20 @@ class _CardQuickAddState extends State<_CardQuickAdd> {
   late final FocusNode focusNode = FocusNode()..addListener(_handleFocusChange);
   bool expanded = false;
 
+  void _setExpanded(bool value) {
+    if (expanded == value) return;
+    setState(() => expanded = value);
+    widget.onExpandedChanged(value);
+  }
+
   void _handleFocusChange() {
     if (!focusNode.hasFocus && textController.text.trim().isEmpty && expanded) {
-      setState(() => expanded = false);
+      _setExpanded(false);
     }
   }
 
   void open() {
-    setState(() => expanded = true);
+    _setExpanded(true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) focusNode.requestFocus();
     });
@@ -1360,7 +1544,7 @@ class _CardQuickAddState extends State<_CardQuickAdd> {
   void close() {
     textController.clear();
     focusNode.unfocus();
-    if (expanded) setState(() => expanded = false);
+    _setExpanded(false);
   }
 
   @override
@@ -1389,58 +1573,74 @@ class _CardQuickAddState extends State<_CardQuickAdd> {
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(9),
+      borderSide: BorderSide(
+        color: expanded ? colors.border : Colors.transparent,
+      ),
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(11, 0, 11, 12),
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 150),
-        child: expanded
-            ? Focus(
-                onKeyEvent: (_, event) {
-                  if (event is KeyDownEvent &&
-                      event.logicalKey == LogicalKeyboardKey.escape) {
-                    close();
-                    return KeyEventResult.handled;
-                  }
-                  return KeyEventResult.ignored;
-                },
-                child: TextField(
-                  key: ValueKey<String>('event-quick-add-${widget.parentId}'),
-                  controller: textController,
-                  focusNode: focusNode,
-                  scrollPadding: EdgeInsets.zero,
-                  onSubmitted: (_) => submit(),
-                  textInputAction: TextInputAction.done,
-                  style: const TextStyle(fontSize: 11),
-                  decoration: InputDecoration(
-                    hintText: '添加子任务…',
-                    prefixIcon: const Icon(Icons.add, size: 16),
-                    suffixText: '↵',
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(9),
-                      borderSide: BorderSide(color: colors.border),
-                    ),
-                  ),
-                ),
-              )
-            : Align(
-                key: const ValueKey<String>('quick-add-collapsed'),
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  key: ValueKey<String>(
-                    'event-quick-add-trigger-${widget.parentId}',
-                  ),
-                  onPressed: open,
-                  style: TextButton.styleFrom(
-                    foregroundColor: colors.muted,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('添加任务', style: TextStyle(fontSize: 11)),
+      child: SizedBox(
+        key: ValueKey<String>('event-quick-add-trigger-${widget.parentId}'),
+        height: 36,
+        child: Focus(
+          onKeyEvent: (_, event) {
+            if (expanded &&
+                event is KeyDownEvent &&
+                event.logicalKey == LogicalKeyboardKey.escape) {
+              close();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: TextField(
+            key: ValueKey<String>('event-quick-add-${widget.parentId}'),
+            controller: textController,
+            focusNode: focusNode,
+            readOnly: !expanded,
+            canRequestFocus: expanded,
+            showCursor: expanded,
+            mouseCursor: expanded
+                ? SystemMouseCursors.text
+                : SystemMouseCursors.click,
+            onTap: expanded ? null : open,
+            scrollPadding: EdgeInsets.zero,
+            onSubmitted: (_) => submit(),
+            textInputAction: TextInputAction.done,
+            textAlignVertical: TextAlignVertical.center,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w400,
+              height: 1.4,
+            ),
+            decoration: InputDecoration(
+              hintText: '添加任务',
+              hintStyle: TextStyle(
+                color: colors.muted,
+                fontSize: 11,
+                fontWeight: FontWeight.w400,
+                height: 1.4,
+              ),
+              prefixIcon: Icon(Icons.add, size: 16, color: colors.muted),
+              prefixIconConstraints: const BoxConstraints.tightFor(
+                width: 32,
+                height: 36,
+              ),
+              suffixText: expanded ? '↵' : null,
+              filled: expanded,
+              isDense: true,
+              contentPadding: const EdgeInsets.only(right: 10),
+              border: border,
+              enabledBorder: border,
+              focusedBorder: border.copyWith(
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.primary,
                 ),
               ),
+            ),
+          ),
+        ),
       ),
     );
   }

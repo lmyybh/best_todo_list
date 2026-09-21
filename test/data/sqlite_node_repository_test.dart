@@ -9,6 +9,80 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
+  test('版本 7 升级支持保存事件色相', () async {
+    final directory = await Directory.systemTemp.createTemp('todo_hue_');
+    final path = p.join(directory.path, 'test.sqlite');
+    try {
+      final db = await AppDatabase.open(path: path);
+      final now = DateTime.utc(2026, 9, 21);
+      final node = TodoNode(
+        id: 'event',
+        title: '事件',
+        createdAt: now,
+        updatedAt: now,
+        manualOrder: 1000,
+      );
+      await db.insert('nodes', node.toMap());
+      await db.execute('ALTER TABLE nodes DROP COLUMN event_hue');
+      await db.execute('PRAGMA user_version = 7');
+      await db.close();
+      final upgraded = await AppDatabase.open(path: path);
+      final restored = TodoNode.fromMap((await upgraded.query('nodes')).single);
+      expect(restored.eventHue, isNull);
+      await upgraded.update(
+        'nodes',
+        restored.copyWith(eventHue: 222.5).toMap(),
+      );
+      await upgraded.close();
+      final reopened = await AppDatabase.open(path: path);
+      expect(
+        TodoNode.fromMap((await reopened.query('nodes')).single).eventHue,
+        222.5,
+      );
+      await reopened.close();
+    } finally {
+      await directory.delete(recursive: true);
+    }
+  });
+
+  test('版本 6 升级后事件归档状态可以保存并重新加载', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'todo_event_archive_',
+    );
+    final path = p.join(directory.path, 'test.sqlite');
+    try {
+      final db = await AppDatabase.open(path: path);
+      final now = DateTime.utc(2026, 9, 21);
+      final node = TodoNode(
+        id: 'event',
+        title: '未完成事件',
+        createdAt: now,
+        updatedAt: now,
+        manualOrder: 1000,
+      );
+      await db.insert('nodes', node.toMap());
+      await db.execute('ALTER TABLE nodes DROP COLUMN is_event_archived');
+      await db.execute('PRAGMA user_version = 6');
+      await db.close();
+      final upgraded = await AppDatabase.open(path: path);
+      final restored = TodoNode.fromMap((await upgraded.query('nodes')).single);
+      expect(restored.isEventArchived, isFalse);
+      await upgraded.update(
+        'nodes',
+        restored.copyWith(isEventArchived: true).toMap(),
+      );
+      await upgraded.close();
+      final reopened = await AppDatabase.open(path: path);
+      final archived = TodoNode.fromMap((await reopened.query('nodes')).single);
+      expect(archived.isEventArchived, isTrue);
+      expect(archived.status, TodoNodeStatus.active);
+      expect(archived.isArchived, isFalse);
+      await reopened.close();
+    } finally {
+      await directory.delete(recursive: true);
+    }
+  });
+
   test('旧数据库迁移到独立用户目录并保留 SQLite 辅助文件', () async {
     final directory = await Directory.systemTemp.createTemp('todo_migrate_');
     try {
@@ -33,6 +107,44 @@ void main() {
     }
   });
 
+  test('版本 5 升级保留任务并持久化收起状态', () async {
+    final directory = await Directory.systemTemp.createTemp('todo_archive_');
+    final path = p.join(directory.path, 'test.sqlite');
+    try {
+      final db = await AppDatabase.open(path: path);
+      final now = DateTime.utc(2026, 9, 21);
+      final node = TodoNode(
+        id: 'archived',
+        title: '已完成',
+        createdAt: now,
+        updatedAt: now,
+        manualOrder: 1000,
+        completedAt: now,
+      );
+      await db.insert('nodes', node.toMap());
+      await db.execute('ALTER TABLE nodes DROP COLUMN is_archived');
+      await db.execute('PRAGMA user_version = 5');
+      await db.close();
+      final upgraded = await AppDatabase.open(path: path);
+      final restored = TodoNode.fromMap((await upgraded.query('nodes')).single);
+      expect(restored.isArchived, isFalse);
+      expect(restored.completedAt, now);
+      await upgraded.update(
+        'nodes',
+        restored.copyWith(isArchived: true).toMap(),
+      );
+      await upgraded.close();
+      final reopened = await AppDatabase.open(path: path);
+      expect(
+        TodoNode.fromMap((await reopened.query('nodes')).single).isArchived,
+        isTrue,
+      );
+      await reopened.close();
+    } finally {
+      await directory.delete(recursive: true);
+    }
+  });
+
   for (final version in <int>[1, 2, 3]) {
     test('版本 $version 数据库升级后保留任务与精确截止时间', () async {
       final directory = await Directory.systemTemp.createTemp(
@@ -44,7 +156,7 @@ void main() {
 
       final preserved = await AppDatabase.open(path: path);
       final versionRows = await preserved.rawQuery('PRAGMA user_version');
-      expect(versionRows.single['user_version'], 5);
+      expect(versionRows.single['user_version'], AppDatabase.currentVersion);
       expect((await preserved.query('nodes')).single['title'], '已有任务');
       final node = (await SqliteNodeRepository(preserved).loadNodes()).single;
       expect(node.notes, '');

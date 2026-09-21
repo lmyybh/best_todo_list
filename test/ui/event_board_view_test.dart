@@ -1,7 +1,9 @@
 import 'package:best_todo_list/app/app.dart';
 import 'package:best_todo_list/app/app_controller.dart';
+import 'package:best_todo_list/app/app_theme.dart';
 import 'package:best_todo_list/app/node_persistence_workspace.dart';
 import 'package:best_todo_list/domain/deadline.dart';
+import 'package:best_todo_list/domain/todo_node.dart';
 import 'package:best_todo_list/ui/events/event_board_view.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/gestures.dart';
@@ -13,6 +15,183 @@ import '../helpers/memory_node_repository.dart';
 import '../helpers/write_result.dart';
 
 void main() {
+  testWidgets('未完成事件可以归档、撤销并从已归档视图恢复', (tester) async {
+    var id = 0;
+    final controller = AppController(
+      NodePersistenceWorkspace(
+        MemoryNodeRepository(),
+        idGenerator: () => 'event-archive-${++id}',
+      ),
+    );
+    await controller.load();
+    addTearDown(controller.dispose);
+    final event = await expectWriteSuccess(
+      controller.create(title: '待办项目', selectCreated: false),
+    );
+    final task = await expectWriteSuccess(
+      controller.create(
+        parentId: event.id,
+        title: '未完成事项',
+        selectCreated: false,
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: ListenableBuilder(
+            listenable: controller,
+            builder: (context, _) => EventBoardView(controller: controller),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    double baseline(String label) {
+      final finder = find.text(label);
+      final box = tester.renderObject<RenderBox>(finder);
+      return tester.getTopLeft(finder).dy +
+          box.getDryBaseline(box.constraints, TextBaseline.alphabetic)!;
+    }
+
+    expect(baseline('已归档 0'), closeTo(baseline('1 个事件'), 0.01));
+    expect(baseline('事件'), closeTo(baseline('1 个事件'), 0.01));
+    Future<void> choose(String label) async {
+      await tester.tap(find.byKey(ValueKey<String>('event-menu-${event.id}')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(label));
+      await tester.pumpAndSettle();
+    }
+
+    await choose('归档事件');
+    expect(find.text('待办项目'), findsNothing);
+    expect(controller.tree.nodes[task.id]!.status, TodoNodeStatus.active);
+    await tester.tap(find.text('撤销'));
+    await tester.pumpAndSettle();
+    expect(find.text('待办项目'), findsOneWidget);
+    await choose('归档事件');
+    await tester.tap(find.byKey(const ValueKey<String>('event-archived-view')));
+    await tester.pumpAndSettle();
+    expect(find.text('待办项目'), findsOneWidget);
+    expect(find.text('未完成事项'), findsOneWidget);
+    await choose('恢复事件');
+    expect(find.text('暂无已归档事件'), findsOneWidget);
+    await tester.tap(find.text('返回事件'));
+    await tester.pumpAndSettle();
+    expect(find.text('待办项目'), findsOneWidget);
+    expect(controller.tree.nodes[task.id]!.status, TodoNodeStatus.active);
+  });
+
+  testWidgets('卡片菜单批量收起并仅撤销本次收起的任务', (tester) async {
+    var id = 0;
+    final controller = AppController(
+      NodePersistenceWorkspace(
+        MemoryNodeRepository(),
+        idGenerator: () => 'batch-${++id}',
+      ),
+    );
+    await controller.load();
+    addTearDown(controller.dispose);
+    final event = await expectWriteSuccess(
+      controller.create(title: '事件', selectCreated: false),
+    );
+    final tasks = <TodoNode>[];
+    for (final title in ['之前收起', '完成甲', '完成乙', '待处理']) {
+      tasks.add(
+        await expectWriteSuccess(
+          controller.create(
+            parentId: event.id,
+            title: title,
+            selectCreated: false,
+          ),
+        ),
+      );
+    }
+    for (final task in tasks.take(3)) {
+      await controller.setTaskStatus(task.id, TodoNodeStatus.completed);
+    }
+    await controller.setTaskArchived(tasks.first.id, true);
+    final hiddenBranch = await expectWriteSuccess(
+      controller.create(
+        parentId: event.id,
+        title: '已收起分支',
+        selectCreated: false,
+      ),
+    );
+    final hiddenChild = await expectWriteSuccess(
+      controller.create(
+        parentId: hiddenBranch.id,
+        title: '分支内已完成任务',
+        selectCreated: false,
+      ),
+    );
+    await controller.setTaskStatus(hiddenChild.id, TodoNodeStatus.completed);
+    await controller.setTaskArchived(hiddenBranch.id, true);
+    await controller.setTaskArchived(tasks[1].id, true);
+    await controller.setTaskArchived(tasks[2].id, true);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListenableBuilder(
+            listenable: controller,
+            builder: (context, _) => EventBoardView(controller: controller),
+          ),
+        ),
+        theme: AppTheme.light(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    Future<void> openMenu() async {
+      await tester.tap(find.byKey(ValueKey<String>('event-menu-${event.id}')));
+      await tester.pumpAndSettle();
+    }
+
+    await openMenu();
+    expect(
+      tester
+          .widget<PopupMenuItem<String>>(
+            find.ancestor(
+              of: find.text('收起已完成'),
+              matching: find.byType(PopupMenuItem<String>),
+            ),
+          )
+          .enabled,
+      isFalse,
+    );
+    await tester.tapAt(const Offset(10, 10));
+    await controller.setTaskArchived(tasks[1].id, false);
+    await controller.setTaskArchived(tasks[2].id, false);
+    await tester.pumpAndSettle();
+    await openMenu();
+    await tester.tap(find.text('收起已完成'));
+    await tester.pumpAndSettle();
+    expect(find.text('完成甲'), findsNothing);
+    expect(find.text('完成乙'), findsNothing);
+    expect(find.text('待处理'), findsOneWidget);
+    expect(controller.tree.nodes[hiddenChild.id]!.isArchived, isFalse);
+    expect(controller.tree.nodes[event.id]!.isArchived, isFalse);
+    await openMenu();
+    expect(find.text('收起已完成'), findsOneWidget);
+    final disabledAction = find.ancestor(
+      of: find.text('收起已完成'),
+      matching: find.byType(PopupMenuItem<String>),
+    );
+    expect(
+      tester.widget<PopupMenuItem<String>>(disabledAction).enabled,
+      isFalse,
+    );
+    await tester.tap(find.text('收起已完成'));
+    await tester.pumpAndSettle();
+    expect(find.text('收起已完成'), findsOneWidget);
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('撤销'));
+    await tester.pumpAndSettle();
+    expect(find.text('完成甲'), findsOneWidget);
+    expect(find.text('完成乙'), findsOneWidget);
+    expect(controller.tree.nodes[tasks.first.id]!.isArchived, isTrue);
+  });
+
   testWidgets('今日筛选展示今天和逾期任务的事件分支并提供空状态', (tester) async {
     var id = 0;
     final controller = AppController(
@@ -517,6 +696,15 @@ void main() {
     final firstHandle = find.byKey(
       ValueKey<String>('event-drag-${roots.first}'),
     );
+    Color? firstCardColor() => tester
+        .widget<LinearProgressIndicator>(
+          find.descendant(
+            of: find.byKey(ValueKey<String>('event-card-${roots.first}')),
+            matching: find.byType(LinearProgressIndicator),
+          ),
+        )
+        .color;
+    final originalColor = firstCardColor();
     await tester.tap(firstHandle);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
@@ -526,6 +714,7 @@ void main() {
       controller.tree.childrenOf(null).take(2).map((node) => node.id),
       <String>[roots[1], roots.first],
     );
+    expect(firstCardColor(), originalColor);
 
     final reorderedHandle = find.byKey(
       ValueKey<String>('event-drag-${roots.first}'),
@@ -536,10 +725,12 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     final boardScrollable = tester.state<ScrollableState>(
-      find.descendant(
-        of: find.byKey(const ValueKey<String>('event-board-scroll')),
-        matching: find.byType(Scrollable),
-      ),
+      find
+          .descendant(
+            of: find.byKey(const ValueKey<String>('event-board-scroll')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
     expect(boardScrollable.position.pixels, greaterThan(0));
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);

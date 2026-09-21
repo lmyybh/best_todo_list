@@ -15,6 +15,9 @@ class TodoNode {
     this.completedAt,
     this.abandonedAt,
     this.deletedAt,
+    this.isArchived = false,
+    this.isEventArchived = false,
+    this.eventHue,
   });
 
   final String id;
@@ -28,6 +31,9 @@ class TodoNode {
   final DateTime? abandonedAt;
   final DateTime? deletedAt;
   final int manualOrder;
+  final bool isArchived;
+  final bool isEventArchived;
+  final double? eventHue;
 
   bool get isDeleted => deletedAt != null;
   bool get isAbandoned => abandonedAt != null;
@@ -53,6 +59,9 @@ class TodoNode {
     DateTime? deletedAt,
     bool clearDeletedAt = false,
     int? manualOrder,
+    bool? isArchived,
+    bool? isEventArchived,
+    double? eventHue,
   }) {
     return TodoNode(
       id: id,
@@ -66,6 +75,9 @@ class TodoNode {
       abandonedAt: clearAbandonedAt ? null : (abandonedAt ?? this.abandonedAt),
       deletedAt: clearDeletedAt ? null : (deletedAt ?? this.deletedAt),
       manualOrder: manualOrder ?? this.manualOrder,
+      isArchived: isArchived ?? this.isArchived,
+      isEventArchived: isEventArchived ?? this.isEventArchived,
+      eventHue: eventHue ?? this.eventHue,
     );
   }
 
@@ -82,6 +94,9 @@ class TodoNode {
     'abandoned_at': abandonedAt?.toUtc().millisecondsSinceEpoch,
     'deleted_at': deletedAt?.toUtc().millisecondsSinceEpoch,
     'manual_order': manualOrder,
+    'is_archived': isArchived ? 1 : 0,
+    'is_event_archived': isEventArchived ? 1 : 0,
+    'event_hue': eventHue,
   };
 
   factory TodoNode.fromMap(Map<String, Object?> map) {
@@ -107,6 +122,9 @@ class TodoNode {
       abandonedAt: nullableDate('abandoned_at'),
       deletedAt: nullableDate('deleted_at'),
       manualOrder: map['manual_order']! as int,
+      isArchived: map['is_archived'] == 1,
+      isEventArchived: map['is_event_archived'] == 1,
+      eventHue: (map['event_hue'] as num?)?.toDouble(),
     );
   }
 }

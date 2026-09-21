@@ -528,6 +528,82 @@ void main() {
     expect(fixture.controller.tree.nodes[leaf.id]?.completedAt, isNotNull);
   });
 
+  testWidgets('完成默认保留，支持收起、展开、恢复和撤销', (tester) async {
+    final fixture = await _InteractionFixture.create(idPrefix: 'archive');
+    final leaf = await fixture.createTask(title: '已经结束');
+    await fixture.pump(tester);
+    final row = find.byKey(ValueKey<String>('event-row-${leaf.id}'));
+    Future<void> openMenu() async {
+      await tester.tap(
+        find.byKey(ValueKey<String>('event-more-task-${leaf.id}')),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await tester.tap(find.byKey(ValueKey<String>('event-complete-${leaf.id}')));
+    await tester.pumpAndSettle();
+    expect(row, findsOneWidget);
+    await openMenu();
+    expect(find.text('放弃'), findsOneWidget);
+    expect(
+      tester
+          .widget<PopupMenuItem<String>>(
+            find.byKey(ValueKey<String>('event-abandon-task-${leaf.id}')),
+          )
+          .enabled,
+      isFalse,
+    );
+    await tester.tap(find.text('收起'));
+    await tester.pumpAndSettle();
+    expect(row, findsNothing);
+    expect(fixture.controller.tree.nodes[leaf.id]!.isArchived, isTrue);
+    expect(fixture.controller.tree.isComplete(fixture.root.id), isTrue);
+    final quickAddIcon = find.descendant(
+      of: find.byKey(
+        ValueKey<String>('event-quick-add-trigger-${fixture.root.id}'),
+      ),
+      matching: find.byIcon(Icons.add),
+    );
+    final iconPosition = tester.getCenter(quickAddIcon);
+    final labelPosition = tester.getTopLeft(find.text('添加任务'));
+    await tester.tap(
+      find.byKey(
+        ValueKey<String>('event-quick-add-trigger-${fixture.root.id}'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('已收起 1 项'), findsNothing);
+    expect(tester.getCenter(quickAddIcon), iconPosition);
+    expect(tester.getTopLeft(find.text('添加任务')), labelPosition);
+    expect(
+      tester
+          .getSize(
+            find.byKey(ValueKey<String>('event-quick-add-${fixture.root.id}')),
+          )
+          .width,
+      398,
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.text('已收起 1 项'), findsOneWidget);
+    await tester.tap(find.text('已收起 1 项'));
+    await tester.pumpAndSettle();
+    expect(row, findsOneWidget);
+    await openMenu();
+    await tester.tap(find.text('移回'));
+    await tester.pumpAndSettle();
+    expect(row, findsOneWidget);
+    expect(find.text('已收起 1 项'), findsNothing);
+    expect(fixture.controller.tree.nodes[leaf.id]!.isArchived, isFalse);
+    await openMenu();
+    await tester.tap(find.text('收起'));
+    await tester.pumpAndSettle();
+    expect(row, findsNothing);
+    await tester.tap(find.text('撤销'));
+    await tester.pumpAndSettle();
+    expect(row, findsOneWidget);
+  });
+
   testWidgets('放弃叶子任务后从事件卡片隐藏且可以撤销', (tester) async {
     final fixture = await _InteractionFixture.create(idPrefix: 'abandon');
     final leaf = await fixture.createTask(title: '不再处理');
@@ -539,6 +615,10 @@ void main() {
     await mouse.addPointer(location: tester.getCenter(row));
     await mouse.moveTo(tester.getCenter(row));
     await tester.pump();
+    await tester.tap(
+      find.byKey(ValueKey<String>('event-more-task-${leaf.id}')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(ValueKey<String>('event-abandon-task-${leaf.id}')),
     );
@@ -571,6 +651,10 @@ void main() {
     await mouse.addPointer(location: tester.getCenter(row));
     await mouse.moveTo(tester.getCenter(row));
     await tester.pump();
+    await tester.tap(
+      find.byKey(ValueKey<String>('event-more-task-${branch.id}')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(ValueKey<String>('event-abandon-task-${branch.id}')),
     );
@@ -646,6 +730,10 @@ void main() {
     await mouse.addPointer(location: tester.getCenter(createdRow));
     await mouse.moveTo(tester.getCenter(createdRow));
     await tester.pump();
+    await tester.tap(
+      find.byKey(ValueKey<String>('event-more-task-${created.id}')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(ValueKey<String>('event-delete-task-${created.id}')),
     );
