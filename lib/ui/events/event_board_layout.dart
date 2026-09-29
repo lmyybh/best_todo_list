@@ -8,8 +8,8 @@ class EventBoardLayout {
 
   static const double spacing = 16;
   static const double minimumCardWidth = 300;
-  static const double maximumCardWidth = 420;
-  static const double singleColumnMaximumWidth = 680;
+  static const double maximumCardWidth = 360;
+  static const double singleColumnMaximumWidth = 480;
   static const double minimumCardHeight = 280;
   static const double maximumCardHeight = 500;
   static const int maximumColumns = 4;

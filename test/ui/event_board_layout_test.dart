@@ -47,8 +47,8 @@ void main() {
 
     expect(projection.padding, const EdgeInsets.fromLTRB(16, 16, 16, 24));
     expect(projection.columns, 1);
-    expect(projection.gridWidth, 568);
-    expect(projection.cardWidth, 568);
+    expect(projection.gridWidth, 480);
+    expect(projection.cardWidth, 480);
     expect(projection.heightAt(0), 433);
     expect(projection.heightAt(1), 288);
     expect(projection.topAt(0), 0);
