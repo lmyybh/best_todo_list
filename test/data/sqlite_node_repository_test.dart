@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:best_todo_list/app/node_persistence_workspace.dart';
 import 'package:best_todo_list/data/app_database.dart';
 import 'package:best_todo_list/data/sqlite_node_repository.dart';
 import 'package:best_todo_list/domain/deadline.dart';
@@ -8,7 +9,75 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import '../helpers/write_result.dart';
+
 void main() {
+  test('重启后相同日期不论设置方式都跟随父任务延后和清除', () async {
+    final directory = await Directory.systemTemp.createTemp('todo_inherited_');
+    final path = p.join(directory.path, 'test.sqlite');
+    try {
+      var id = 0;
+      var workspace = NodePersistenceWorkspace(
+        SqliteNodeRepository(await AppDatabase.open(path: path)),
+        idGenerator: () => 'node-${++id}',
+      );
+      await workspace.load();
+      final deadline = DateOnlyDeadline(year: 2026, month: 10, day: 20);
+      final parent = await expectWriteSuccess(
+        workspace.createNode(title: '父任务', deadline: deadline),
+      );
+      final inherited = await expectWriteSuccess(
+        workspace.createNode(parentId: parent.id, title: '继承'),
+      );
+      final manual = await expectWriteSuccess(
+        workspace.createNode(
+          parentId: parent.id,
+          title: '手动',
+          deadline: deadline,
+        ),
+      );
+      await workspace.close();
+
+      workspace = NodePersistenceWorkspace(
+        SqliteNodeRepository(await AppDatabase.open(path: path)),
+      );
+      await workspace.load();
+      await expectWriteSuccess(
+        workspace.updateDeadline(
+          parent.id,
+          DateOnlyDeadline(year: 2026, month: 10, day: 22),
+        ),
+      );
+      await workspace.close();
+
+      final repository = SqliteNodeRepository(
+        await AppDatabase.open(path: path),
+      );
+      final nodes = {
+        for (final node in await repository.loadNodes()) node.id: node,
+      };
+      expect(nodes[inherited.id]!.deadline?.storage.date, '2026-10-22');
+      expect(nodes[manual.id]!.deadline?.storage.date, '2026-10-22');
+      await repository.close();
+
+      workspace = NodePersistenceWorkspace(
+        SqliteNodeRepository(await AppDatabase.open(path: path)),
+      );
+      await workspace.load();
+      await expectWriteSuccess(workspace.updateDeadline(parent.id, null));
+      await workspace.close();
+      final clearedRepository = SqliteNodeRepository(
+        await AppDatabase.open(path: path),
+      );
+      for (final node in await clearedRepository.loadNodes()) {
+        expect(node.deadline, isNull);
+      }
+      await clearedRepository.close();
+    } finally {
+      await directory.delete(recursive: true);
+    }
+  });
+
   test('版本 7 升级支持保存事件色相', () async {
     final directory = await Directory.systemTemp.createTemp('todo_hue_');
     final path = p.join(directory.path, 'test.sqlite');

@@ -117,14 +117,60 @@ class NodePersistenceWorkspace {
   Future<NodeWriteResult<void>> updateDeadline(
     String nodeId,
     Deadline? deadline,
-  ) => _updateNode(
-    nodeId,
-    (node, now) => node.copyWith(
+  ) => _write(() {
+    final currentTree = tree;
+    final node = currentTree.nodes[nodeId];
+    if (node == null) throw const NodeRuleException('任务不存在');
+    final now = _clock().toUtc();
+    final updated = node.copyWith(
       deadline: deadline,
       clearDeadline: deadline == null,
       updatedAt: now,
-    ),
-  );
+    );
+    final changes = <TodoNode>[updated];
+
+    void updateChildren(TodoNode previousParent, TodoNode parent) {
+      final parentDeadline = parent.deadline;
+      final tightened =
+          parentDeadline != null &&
+          (previousParent.deadline == null ||
+              parentDeadline.compareTo(previousParent.deadline!) < 0);
+      final extended =
+          parentDeadline != null &&
+          previousParent.deadline != null &&
+          parentDeadline.compareTo(previousParent.deadline!) > 0;
+      for (final child in currentTree.childrenOf(parent.id)) {
+        if (currentTree.isComplete(child.id)) continue;
+        var updatedChild = child;
+        final inherits = child.deadline == null;
+        final followsParent =
+            (extended || parentDeadline == null) &&
+            previousParent.deadline != null &&
+            child.deadline?.storage.date ==
+                previousParent.deadline?.storage.date &&
+            child.deadline?.storage.instantMilliseconds ==
+                previousParent.deadline?.storage.instantMilliseconds;
+        if (inherits ||
+            followsParent ||
+            (tightened && child.deadline!.compareTo(parentDeadline) > 0)) {
+          if (child.deadline?.storage.date != parentDeadline?.storage.date ||
+              child.deadline?.storage.instantMilliseconds !=
+                  parentDeadline?.storage.instantMilliseconds) {
+            updatedChild = child.copyWith(
+              deadline: parentDeadline,
+              clearDeadline: parentDeadline == null,
+              updatedAt: now,
+            );
+            changes.add(updatedChild);
+          }
+        }
+        updateChildren(child, updatedChild);
+      }
+    }
+
+    updateChildren(node, updated);
+    return _NodeMutation<void>(null, changes);
+  });
 
   Future<NodeWriteResult<void>> setNodeStatus(
     String nodeId,

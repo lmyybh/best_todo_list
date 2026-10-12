@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:best_todo_list/app/node_persistence_workspace.dart';
 import 'package:best_todo_list/app/node_write_result.dart';
+import 'package:best_todo_list/domain/deadline.dart';
 import 'package:best_todo_list/domain/node_repository.dart';
 import 'package:best_todo_list/domain/todo_node.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/memory_node_repository.dart';
+import '../helpers/write_result.dart';
 
 void main() {
   test('写入成功直接发布持久化快照且不重新读取仓库', () async {
@@ -39,6 +41,39 @@ void main() {
     expect(result, isA<NodeWriteFailure<void>>());
     expect(result.nodes.single.title, 'existing');
     expect(workspace.nodes.single.title, 'existing');
+  });
+
+  test('级联日期写入失败时父子任务均保留原日期', () async {
+    final repository = _TrackingRepository();
+    var id = 0;
+    final workspace = NodePersistenceWorkspace(
+      repository,
+      idGenerator: () => 'node-${++id}',
+    );
+    addTearDown(workspace.close);
+    await workspace.load();
+    final parent = await expectWriteSuccess(
+      workspace.createNode(
+        title: '父任务',
+        deadline: DateOnlyDeadline(year: 2026, month: 8, day: 20),
+      ),
+    );
+    final child = await expectWriteSuccess(
+      workspace.createNode(parentId: parent.id, title: '子任务'),
+    );
+    repository.failNextSave = true;
+    final result = await workspace.updateDeadline(
+      parent.id,
+      DateOnlyDeadline(year: 2026, month: 8, day: 22),
+    );
+    expect(result, isA<NodeWriteFailure<void>>());
+    for (final node in [...workspace.nodes, ...await repository.loadNodes()]) {
+      expect(node.deadline?.storage.date, '2026-08-20');
+    }
+    expect(
+      workspace.tree.nodes[child.id]!.deadline?.storage.date,
+      '2026-08-20',
+    );
   });
 
   test('并发写入按调用顺序串行计算和持久化', () async {

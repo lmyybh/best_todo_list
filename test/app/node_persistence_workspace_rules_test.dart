@@ -191,6 +191,308 @@ void main() {
     );
   });
 
+  test('无日期子任务和多层后代自动继承并跟随父任务延后', () async {
+    final parent = await expectWriteSuccess(workspace.createNode(title: '父任务'));
+    final child = await expectWriteSuccess(
+      workspace.createNode(parentId: parent.id, title: '子任务'),
+    );
+    final grandchild = await expectWriteSuccess(
+      workspace.createNode(parentId: child.id, title: '孙任务'),
+    );
+    for (final day in [20, 22]) {
+      await expectWriteSuccess(
+        workspace.updateDeadline(
+          parent.id,
+          DateOnlyDeadline(year: 2026, month: 8, day: day),
+        ),
+      );
+      for (final id in [child.id, grandchild.id]) {
+        expect(
+          workspace.tree.nodes[id]!.deadline?.storage.date,
+          '2026-08-$day',
+        );
+      }
+    }
+  });
+
+  test('父任务提前收紧较晚日期且收紧后随相同父任务日期延后', () async {
+    final parent = await expectWriteSuccess(
+      workspace.createNode(
+        title: '父任务',
+        deadline: DateOnlyDeadline(year: 2026, month: 8, day: 20),
+      ),
+    );
+    final early = await expectWriteSuccess(
+      workspace.createNode(
+        parentId: parent.id,
+        title: '较早',
+        deadline: DateOnlyDeadline(year: 2026, month: 8, day: 16),
+      ),
+    );
+    final late = await expectWriteSuccess(
+      workspace.createNode(
+        parentId: parent.id,
+        title: '较晚',
+        deadline: DateOnlyDeadline(year: 2026, month: 8, day: 19),
+      ),
+    );
+    await expectWriteSuccess(
+      workspace.updateDeadline(
+        parent.id,
+        DateOnlyDeadline(year: 2026, month: 8, day: 18),
+      ),
+    );
+    expect(
+      workspace.tree.nodes[early.id]!.deadline?.storage.date,
+      '2026-08-16',
+    );
+    expect(workspace.tree.nodes[late.id]!.deadline?.storage.date, '2026-08-18');
+    await expectWriteSuccess(
+      workspace.updateDeadline(
+        parent.id,
+        DateOnlyDeadline(year: 2026, month: 8, day: 22),
+      ),
+    );
+    expect(workspace.tree.nodes[late.id]!.deadline?.storage.date, '2026-08-22');
+    expect(
+      workspace.tree.nodes[early.id]!.deadline?.storage.date,
+      '2026-08-16',
+    );
+  });
+
+  test('与父任务相同的日期不论设置方式都随父任务延后', () async {
+    final deadline = DateOnlyDeadline(year: 2026, month: 8, day: 20);
+    final parent = await expectWriteSuccess(
+      workspace.createNode(title: '父任务', deadline: deadline),
+    );
+    final inherited = await expectWriteSuccess(
+      workspace.createNode(parentId: parent.id, title: '继承'),
+    );
+    final manual = await expectWriteSuccess(
+      workspace.createNode(parentId: parent.id, title: '手动'),
+    );
+    await expectWriteSuccess(workspace.updateDeadline(manual.id, deadline));
+    final grandchild = await expectWriteSuccess(
+      workspace.createNode(
+        parentId: manual.id,
+        title: '手动设置的孙任务',
+        deadline: DateOnlyDeadline(year: 2026, month: 8, day: 20),
+      ),
+    );
+    await expectWriteSuccess(
+      workspace.updateDeadline(
+        parent.id,
+        DateOnlyDeadline(year: 2026, month: 8, day: 22),
+      ),
+    );
+    expect(
+      workspace.tree.nodes[inherited.id]!.deadline?.storage.date,
+      '2026-08-22',
+    );
+    expect(
+      workspace.tree.nodes[manual.id]!.deadline?.storage.date,
+      '2026-08-22',
+    );
+    expect(
+      workspace.tree.nodes[grandchild.id]!.deadline?.storage.date,
+      '2026-08-22',
+    );
+  });
+
+  test('具体截止时间完全一致才随延后，同日不同时间保持不变', () async {
+    final deadline = TimedDeadline(DateTime(2026, 8, 20, 18));
+    final parent = await expectWriteSuccess(
+      workspace.createNode(title: '父任务', deadline: deadline),
+    );
+    final equal = await expectWriteSuccess(
+      workspace.createNode(
+        parentId: parent.id,
+        title: '相同时间',
+        deadline: TimedDeadline(deadline.instant),
+      ),
+    );
+    final earlier = await expectWriteSuccess(
+      workspace.createNode(
+        parentId: parent.id,
+        title: '同日较早',
+        deadline: TimedDeadline(DateTime(2026, 8, 20, 16)),
+      ),
+    );
+    final dateOnly = await expectWriteSuccess(
+      workspace.createNode(
+        parentId: parent.id,
+        title: '仅日期',
+        deadline: DateOnlyDeadline(year: 2026, month: 8, day: 20),
+      ),
+    );
+    final later = TimedDeadline(DateTime(2026, 8, 22, 18));
+    await expectWriteSuccess(workspace.updateDeadline(parent.id, later));
+    expect(workspace.tree.nodes[equal.id]!.deadline, same(later));
+    expect(
+      workspace.tree.nodes[earlier.id]!.deadline!.effectiveAt,
+      DateTime(2026, 8, 20, 16),
+    );
+    expect(
+      workspace.tree.nodes[dateOnly.id]!.deadline?.storage.date,
+      '2026-08-20',
+    );
+  });
+
+  test('多层收紧按直接父任务比较日期和具体时间', () async {
+    final parent = await expectWriteSuccess(
+      workspace.createNode(
+        title: '父任务',
+        deadline: DateOnlyDeadline(year: 2026, month: 8, day: 20),
+      ),
+    );
+    final branch = await expectWriteSuccess(
+      workspace.createNode(
+        parentId: parent.id,
+        title: '阶段',
+        deadline: DateOnlyDeadline(year: 2026, month: 8, day: 19),
+      ),
+    );
+    final inherited = await expectWriteSuccess(
+      workspace.createNode(parentId: branch.id, title: '继承'),
+    );
+    final manual = await expectWriteSuccess(
+      workspace.createNode(
+        parentId: branch.id,
+        title: '更早的时间',
+        deadline: TimedDeadline(DateTime(2026, 8, 19, 16)),
+      ),
+    );
+    final deadline = TimedDeadline(DateTime(2026, 8, 19, 18));
+    await expectWriteSuccess(workspace.updateDeadline(parent.id, deadline));
+    for (final id in [branch.id, inherited.id]) {
+      expect(workspace.tree.nodes[id]!.deadline, same(deadline));
+    }
+    expect(
+      workspace.tree.nodes[manual.id]!.deadline!.effectiveAt,
+      DateTime(2026, 8, 19, 16),
+    );
+  });
+
+  test('清除父任务日期按相同时间判断，不区分设置方式并逐层处理', () async {
+    final parent = await expectWriteSuccess(
+      workspace.createNode(
+        title: '父任务',
+        deadline: DateOnlyDeadline(year: 2026, month: 8, day: 20),
+      ),
+    );
+    final inherited = await expectWriteSuccess(
+      workspace.createNode(parentId: parent.id, title: '继承'),
+    );
+    final sameDate = await expectWriteSuccess(
+      workspace.createNode(
+        parentId: parent.id,
+        title: '手动设置相同日期',
+        deadline: DateOnlyDeadline(year: 2026, month: 8, day: 20),
+      ),
+    );
+    final grandchild = await expectWriteSuccess(
+      workspace.createNode(
+        parentId: sameDate.id,
+        title: '孙任务',
+        deadline: DateOnlyDeadline(year: 2026, month: 8, day: 20),
+      ),
+    );
+    final completed = await expectWriteSuccess(
+      workspace.createNode(parentId: parent.id, title: '已完成'),
+    );
+    await expectWriteSuccess(
+      workspace.setNodeStatus(completed.id, TodoNodeStatus.completed),
+    );
+    final timed = await expectWriteSuccess(
+      workspace.createNode(
+        parentId: parent.id,
+        title: '同日具体时间',
+        deadline: TimedDeadline(DateTime(2026, 8, 20, 18)),
+      ),
+    );
+    final manual = await expectWriteSuccess(
+      workspace.createNode(
+        parentId: parent.id,
+        title: '手动',
+        deadline: DateOnlyDeadline(year: 2026, month: 8, day: 18),
+      ),
+    );
+    await expectWriteSuccess(workspace.updateDeadline(parent.id, null));
+    for (final id in [inherited.id, sameDate.id, grandchild.id]) {
+      expect(workspace.tree.nodes[id]!.deadline, isNull);
+    }
+    expect(
+      workspace.tree.nodes[completed.id]!.deadline?.storage.date,
+      '2026-08-20',
+    );
+    expect(
+      workspace.tree.nodes[timed.id]!.deadline!.effectiveAt,
+      DateTime(2026, 8, 20, 18),
+    );
+    expect(
+      workspace.tree.nodes[manual.id]!.deadline?.storage.date,
+      '2026-08-18',
+    );
+  });
+
+  test('清除父任务日期保留移入任务的不同继承日期', () async {
+    final source = await expectWriteSuccess(
+      workspace.createNode(
+        title: '来源',
+        deadline: TimedDeadline(DateTime(2026, 8, 18, 16)),
+      ),
+    );
+    final child = await expectWriteSuccess(
+      workspace.createNode(parentId: source.id, title: '继承来源日期'),
+    );
+    final target = await expectWriteSuccess(
+      workspace.createNode(
+        title: '目标',
+        deadline: TimedDeadline(DateTime(2026, 8, 20, 18)),
+      ),
+    );
+    final matching = await expectWriteSuccess(
+      workspace.createNode(
+        parentId: target.id,
+        title: '相同时间',
+        deadline: TimedDeadline(DateTime(2026, 8, 20, 18)),
+      ),
+    );
+    await expectWriteSuccess(
+      workspace.moveNode(nodeId: child.id, newParentId: target.id),
+    );
+    await expectWriteSuccess(workspace.updateDeadline(target.id, null));
+    expect(
+      workspace.tree.nodes[child.id]!.deadline!.effectiveAt,
+      DateTime(2026, 8, 18, 16),
+    );
+    expect(workspace.tree.nodes[matching.id]!.deadline, isNull);
+  });
+
+  test('已完成子任务及完成分支不改变日期和更新时间', () async {
+    final parent = await expectWriteSuccess(workspace.createNode(title: '父任务'));
+    final branch = await expectWriteSuccess(
+      workspace.createNode(parentId: parent.id, title: '已完成分支'),
+    );
+    final child = await expectWriteSuccess(
+      workspace.createNode(parentId: branch.id, title: '已完成子任务'),
+    );
+    await expectWriteSuccess(
+      workspace.setNodeStatus(child.id, TodoNodeStatus.completed),
+    );
+    final before = workspace.tree;
+    now = now.add(const Duration(hours: 1));
+    await expectWriteSuccess(
+      workspace.updateDeadline(
+        parent.id,
+        DateOnlyDeadline(year: 2026, month: 8, day: 20),
+      ),
+    );
+    for (final id in [branch.id, child.id]) {
+      expect(workspace.tree.nodes[id], same(before.nodes[id]));
+    }
+  });
+
   test('叶子完成和取消完成写入正确状态', () async {
     final task = await expectWriteSuccess(workspace.createNode(title: '任务'));
     final createdAt = task.createdAt;
