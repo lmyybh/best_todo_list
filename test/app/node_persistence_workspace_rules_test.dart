@@ -640,17 +640,23 @@ void main() {
     expect((result as NodeWriteFailure).error, isA<NodeRuleException>());
   });
 
-  test('软删除整棵子树并可恢复', () async {
+  test('软删除整棵子树，重新加载后保持隐藏', () async {
     final root = await expectWriteSuccess(workspace.createNode(title: '事件'));
     await expectWriteSuccess(
       workspace.createNode(parentId: root.id, title: '子任务'),
     );
-    final deletion = await expectWriteSuccess(workspace.deleteSubtree(root.id));
+    await expectWriteSuccess(workspace.deleteSubtree(root.id));
     expect(workspace.nodes, isEmpty);
     expect(await repository.loadNodes(includeDeleted: true), hasLength(2));
 
-    await expectWriteSuccess(workspace.restoreSubtree(deletion));
-    expect(workspace.nodes, hasLength(2));
+    await workspace.load();
+    expect(workspace.nodes, isEmpty);
+    expect(
+      (await repository.loadNodes(
+        includeDeleted: true,
+      )).every((node) => node.deletedAt != null),
+      isTrue,
+    );
   });
 
   test('禁止移动到自身或子孙节点', () async {

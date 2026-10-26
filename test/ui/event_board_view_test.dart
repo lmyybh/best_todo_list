@@ -15,7 +15,7 @@ import '../helpers/memory_node_repository.dart';
 import '../helpers/write_result.dart';
 
 void main() {
-  testWidgets('未完成事件可以归档、撤销并从已归档视图恢复', (tester) async {
+  testWidgets('未完成事件可以归档并从已归档视图恢复，不弹出提示', (tester) async {
     var id = 0;
     final controller = AppController(
       NodePersistenceWorkspace(
@@ -86,10 +86,7 @@ void main() {
     await choose('归档事件');
     expect(find.text('待办项目'), findsNothing);
     expect(controller.tree.nodes[task.id]!.status, TodoNodeStatus.active);
-    await tester.tap(find.text('撤销'));
-    await tester.pumpAndSettle();
-    expect(find.text('待办项目'), findsOneWidget);
-    await choose('归档事件');
+    expect(find.byType(SnackBar), findsNothing);
     await tester.tap(find.byKey(const ValueKey<String>('event-archived-view')));
     await tester.pumpAndSettle();
     expect(find.text('待办项目'), findsOneWidget);
@@ -102,7 +99,7 @@ void main() {
     expect(controller.tree.nodes[task.id]!.status, TodoNodeStatus.active);
   });
 
-  testWidgets('卡片菜单批量收起并仅撤销本次收起的任务', (tester) async {
+  testWidgets('卡片菜单批量收起已完成任务，不弹出提示', (tester) async {
     var id = 0;
     final controller = AppController(
       NodePersistenceWorkspace(
@@ -205,10 +202,9 @@ void main() {
     expect(find.text('收起已完成'), findsOneWidget);
     await tester.tapAt(const Offset(10, 10));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('撤销'));
-    await tester.pumpAndSettle();
-    expect(find.text('完成甲'), findsOneWidget);
-    expect(find.text('完成乙'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(controller.tree.nodes[tasks[1].id]!.isArchived, isTrue);
+    expect(controller.tree.nodes[tasks[2].id]!.isArchived, isTrue);
     expect(controller.tree.nodes[tasks.first.id]!.isArchived, isTrue);
   });
 

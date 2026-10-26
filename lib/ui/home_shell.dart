@@ -6,8 +6,9 @@ import '../app/app_controller.dart';
 import '../app/app_theme.dart';
 import 'adaptive/desktop_app_shell.dart';
 import 'events/event_view.dart';
+import 'events/event_board_view.dart';
 import 'navigation/app_rail.dart';
-import 'timeline/timeline_view.dart';
+import 'timeline/calendar_timeline_view.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({required this.controller, super.key});
@@ -20,6 +21,7 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   Timer? _clockTimer;
+  bool _calendarVisited = false;
 
   AppController get controller => widget.controller;
 
@@ -53,6 +55,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       );
     }
 
+    _calendarVisited = _calendarVisited || controller.view == AppView.timeline;
     return Scaffold(
       body: Column(
         children: <Widget>[
@@ -73,9 +76,19 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           Expanded(
             child: DesktopAppShell(
               navigation: AppRail(controller: controller),
-              body: controller.view == AppView.events
-                  ? EventView(controller: controller)
-                  : TimelineView(controller: controller),
+              body: EventView(
+                controller: controller,
+                child: IndexedStack(
+                  index: controller.view == AppView.events ? 0 : 1,
+                  children: [
+                    EventBoardView(controller: controller),
+                    if (_calendarVisited)
+                      CalendarTimelineView(controller: controller)
+                    else
+                      const SizedBox.shrink(),
+                  ],
+                ),
+              ),
             ),
           ),
         ],

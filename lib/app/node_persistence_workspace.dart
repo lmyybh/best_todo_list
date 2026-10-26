@@ -20,12 +20,6 @@ class NodeRuleException implements Exception {
   String toString() => message;
 }
 
-class DeletedSubtree {
-  const DeletedSubtree(this.nodes);
-
-  final List<TodoNode> nodes;
-}
-
 class NodePersistenceWorkspace {
   NodePersistenceWorkspace(
     this._repository, {
@@ -101,6 +95,81 @@ class NodePersistenceWorkspace {
     return _NodeMutation<TodoNode>(node, changes);
   });
 
+  Future<NodeWriteResult<TodoNode>> createScheduledTask({
+    required String title,
+    required String eventName,
+    String? eventId,
+    required DateTime start,
+    required DateTime end,
+  }) => _write(() {
+    final cleanTitle = _validatedTitle(title);
+    final cleanEventName = eventName.trim();
+    if (cleanEventName.isEmpty) throw const NodeRuleException('请选择或输入所属事件');
+    if (!end.isAfter(start)) throw const NodeRuleException('结束时间必须晚于开始时间');
+    final currentTree = tree;
+    TodoNode? event;
+    if (eventId != null) {
+      event = currentTree.nodes[eventId];
+      if (event == null || event.parentId != null) {
+        throw const NodeRuleException('所属事件不存在，请重新选择');
+      }
+    } else {
+      final matches = currentTree
+          .childrenOf(null)
+          .where((node) => node.title == cleanEventName)
+          .toList();
+      if (matches.length > 1) throw const NodeRuleException('存在同名事件，请从列表中选择');
+      event = matches.isEmpty ? null : matches.single;
+    }
+    if (event != null && (event.isAbandoned || event.isEventArchived)) {
+      throw const NodeRuleException('该事件已归档或放弃，请先恢复');
+    }
+    final now = _clock().toUtc();
+    int nextOrder(String? parentId) =>
+        currentTree
+            .childrenOf(parentId)
+            .fold<int>(
+              0,
+              (order, node) =>
+                  node.manualOrder > order ? node.manualOrder : order,
+            ) +
+        1000;
+    String nextId() {
+      final id = _idGenerator();
+      if (currentTree.nodes.containsKey(id) || event?.id == id) {
+        throw StateError('节点标识已存在');
+      }
+      return id;
+    }
+
+    final changes = <TodoNode>[];
+    if (event == null) {
+      event = TodoNode(
+        id: nextId(),
+        title: cleanEventName,
+        createdAt: now,
+        updatedAt: now,
+        manualOrder: nextOrder(null),
+        eventHue: _nextEventHue(_nodes),
+      );
+      changes.add(event);
+    } else if (event.completedAt != null && currentTree.isLeaf(event.id)) {
+      changes.add(event.copyWith(clearCompletedAt: true, updatedAt: now));
+    }
+    final task = TodoNode(
+      id: nextId(),
+      parentId: event.id,
+      title: cleanTitle,
+      deadline: TimedDeadline(end),
+      scheduledStart: start.toUtc(),
+      createdAt: now,
+      updatedAt: now,
+      manualOrder: nextOrder(event.id),
+    );
+    changes.add(task);
+    return _NodeMutation(task, changes);
+  });
+
   Future<NodeWriteResult<void>> updateTitle(String nodeId, String title) =>
       _updateNode(
         nodeId,
@@ -122,11 +191,7 @@ class NodePersistenceWorkspace {
     final node = currentTree.nodes[nodeId];
     if (node == null) throw const NodeRuleException('任务不存在');
     final now = _clock().toUtc();
-    final updated = node.copyWith(
-      deadline: deadline,
-      clearDeadline: deadline == null,
-      updatedAt: now,
-    );
+    final updated = _withDeadline(node, deadline, now);
     final changes = <TodoNode>[updated];
 
     void updateChildren(TodoNode previousParent, TodoNode parent) {
@@ -156,11 +221,7 @@ class NodePersistenceWorkspace {
           if (child.deadline?.storage.date != parentDeadline?.storage.date ||
               child.deadline?.storage.instantMilliseconds !=
                   parentDeadline?.storage.instantMilliseconds) {
-            updatedChild = child.copyWith(
-              deadline: parentDeadline,
-              clearDeadline: parentDeadline == null,
-              updatedAt: now,
-            );
+            updatedChild = _withDeadline(child, parentDeadline, now);
             changes.add(updatedChild);
           }
         }
@@ -171,6 +232,26 @@ class NodePersistenceWorkspace {
     updateChildren(node, updated);
     return _NodeMutation<void>(null, changes);
   });
+
+  static TodoNode _withDeadline(
+    TodoNode node,
+    Deadline? deadline,
+    DateTime now,
+  ) {
+    final previous = node.deadline;
+    final start = node.scheduledStart;
+    final shiftedStart =
+        start != null && previous is TimedDeadline && deadline is TimedDeadline
+        ? start.add(deadline.localTime.difference(previous.localTime))
+        : null;
+    return node.copyWith(
+      deadline: deadline,
+      clearDeadline: deadline == null,
+      scheduledStart: shiftedStart,
+      clearScheduledStart: shiftedStart == null,
+      updatedAt: now,
+    );
+  }
 
   Future<NodeWriteResult<void>> setNodeStatus(
     String nodeId,
@@ -213,54 +294,29 @@ class NodePersistenceWorkspace {
         return node.copyWith(isArchived: archived, updatedAt: now);
       });
 
-  Future<NodeWriteResult<List<String>>> archiveCompletedTasks(String eventId) =>
+  Future<NodeWriteResult<void>> archiveCompletedTasks(String eventId) =>
       _write(() {
         final currentTree = tree;
         final now = _clock().toUtc();
         final tasks = currentTree.archivableCompletedTasks(eventId).toList();
-        return _NodeMutation<List<String>>(
-          tasks.map((node) => node.id).toList(),
+        return _NodeMutation<void>(
+          null,
           tasks
               .map((node) => node.copyWith(isArchived: true, updatedAt: now))
               .toList(),
         );
       });
 
-  Future<NodeWriteResult<void>> restoreArchivedTasks(List<String> nodeIds) =>
-      _write(() {
-        final currentTree = tree;
-        final now = _clock().toUtc();
-        return _NodeMutation<void>(null, [
-          for (final id in nodeIds)
-            if (currentTree.nodes[id] case final node?)
-              node.copyWith(isArchived: false, updatedAt: now),
-        ]);
-      });
-
-  Future<NodeWriteResult<DeletedSubtree>> deleteSubtree(String nodeId) =>
-      _write(() {
-        final currentTree = tree;
-        final node = currentTree.nodes[nodeId];
-        if (node == null) throw const NodeRuleException('任务不存在');
-        final now = _clock().toUtc();
-        final subtree = <TodoNode>[node, ...currentTree.descendantsOf(nodeId)];
-        return _NodeMutation<DeletedSubtree>(
-          DeletedSubtree(List<TodoNode>.unmodifiable(subtree)),
-          <TodoNode>[
-            for (final item in subtree)
-              item.copyWith(deletedAt: now, updatedAt: now),
-          ],
-        );
-      });
-
-  Future<NodeWriteResult<void>> restoreSubtree(DeletedSubtree deletion) =>
-      _write(() {
-        final now = _clock().toUtc();
-        return _NodeMutation<void>(null, <TodoNode>[
-          for (final node in deletion.nodes)
-            node.copyWith(clearDeletedAt: true, updatedAt: now),
-        ]);
-      });
+  Future<NodeWriteResult<void>> deleteSubtree(String nodeId) => _write(() {
+    final currentTree = tree;
+    final node = currentTree.nodes[nodeId];
+    if (node == null) throw const NodeRuleException('任务不存在');
+    final now = _clock().toUtc();
+    final subtree = <TodoNode>[node, ...currentTree.descendantsOf(nodeId)];
+    return _NodeMutation<void>(null, <TodoNode>[
+      for (final item in subtree) item.copyWith(deletedAt: now, updatedAt: now),
+    ]);
+  });
 
   Future<NodeWriteResult<void>> moveNode({
     required String nodeId,

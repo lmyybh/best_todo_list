@@ -25,11 +25,36 @@ class AppController extends ChangeNotifier {
   String? _selectedId;
   bool _loading = true;
   Object? _error;
-  DeletedSubtree? _lastDeletion;
   bool _eventDetailOpen = false;
   bool _disposed = false;
 
   AppView view = AppView.events;
+  String? calendarFocusId;
+  int calendarNavigationRevision = 0;
+  String? boardFocusId;
+  int boardNavigationRevision = 0;
+
+  void showInCalendar(String nodeId) {
+    final node = tree.nodes[nodeId];
+    if (node == null) return;
+    calendarFocusId = nodeId;
+    calendarNavigationRevision++;
+    _eventDetailOpen = false;
+    view = AppView.timeline;
+    notifyListeners();
+  }
+
+  void showInEventTree(String nodeId) {
+    if (!tree.nodes.containsKey(nodeId)) return;
+    boardFocusId = nodeId;
+    boardNavigationRevision++;
+    _selectedId = nodeId;
+    _eventDetailOpen = true;
+    eventBoardFilter = EventBoardFilter.all;
+    view = AppView.events;
+    notifyListeners();
+  }
+
   EventBoardFilter eventBoardFilter = EventBoardFilter.all;
   final Set<String> expandedIds = <String>{};
   final Set<String> timelineExpandedIds = <String>{};
@@ -42,7 +67,6 @@ class AppController extends ChangeNotifier {
   String? get selectedId => _selectedId;
   TodoNode? get selectedNode =>
       _selectedId == null ? null : tree.nodes[_selectedId];
-  bool get canUndoDelete => _lastDeletion != null;
   bool get eventDetailOpen => _eventDetailOpen;
   TimelineProjection get timelineProjection => _timeline.project(tree);
   DateTime get now => _timeline.now;
@@ -82,6 +106,7 @@ class AppController extends ChangeNotifier {
 
   void setView(AppView next) {
     view = next;
+    _eventDetailOpen = false;
     notifyListeners();
   }
 
@@ -167,6 +192,23 @@ class AppController extends ChangeNotifier {
     },
   );
 
+  Future<NodeWriteResult<TodoNode>> createScheduledTask({
+    required String title,
+    required String eventName,
+    String? eventId,
+    required DateTime start,
+    required DateTime end,
+  }) => _write(
+    _workspace.createScheduledTask(
+      title: title,
+      eventName: eventName,
+      eventId: eventId,
+      start: start,
+      end: end,
+    ),
+    onSuccess: (node) => expandedIds.add(node.parentId!),
+  );
+
   Future<NodeWriteResult<void>> updateTitle(String nodeId, String title) =>
       _write(_workspace.updateTitle(nodeId, title));
 
@@ -191,38 +233,11 @@ class AppController extends ChangeNotifier {
   Future<NodeWriteResult<void>> setTaskArchived(String nodeId, bool archived) =>
       _write(_workspace.setTaskArchived(nodeId, archived));
 
-  Future<NodeWriteResult<List<String>>> archiveCompletedTasks(String eventId) =>
+  Future<NodeWriteResult<void>> archiveCompletedTasks(String eventId) =>
       _write(_workspace.archiveCompletedTasks(eventId));
 
-  Future<NodeWriteResult<void>> restoreArchivedTasks(List<String> nodeIds) =>
-      _write(_workspace.restoreArchivedTasks(nodeIds));
-
-  Future<NodeWriteResult<DeletedSubtree>> delete(String nodeId) => _write(
-    _workspace.deleteSubtree(nodeId),
-    onSuccess: (deletion) {
-      _lastDeletion = deletion;
-      if (_selectedId == nodeId ||
-          deletion.nodes.any((node) => node.id == _selectedId)) {
-        _selectedId = null;
-      }
-    },
-  );
-
-  Future<NodeWriteResult<void>> undoDelete() {
-    final deletion = _lastDeletion;
-    if (deletion == null) {
-      return Future<NodeWriteResult<void>>.value(
-        NodeWriteSuccess<void>(null, _workspace.nodes),
-      );
-    }
-    return _write(
-      _workspace.restoreSubtree(deletion),
-      onSuccess: (_) {
-        _selectedId = deletion.nodes.first.id;
-        _lastDeletion = null;
-      },
-    );
-  }
+  Future<NodeWriteResult<void>> delete(String nodeId) =>
+      _write(_workspace.deleteSubtree(nodeId));
 
   Future<NodeWriteResult<void>> move({
     required String nodeId,

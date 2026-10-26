@@ -12,6 +12,7 @@ class TodoNode {
     this.notes = '',
     this.parentId,
     this.deadline,
+    this.scheduledStart,
     this.completedAt,
     this.abandonedAt,
     this.deletedAt,
@@ -25,6 +26,7 @@ class TodoNode {
   final String title;
   final String notes;
   final Deadline? deadline;
+  final DateTime? scheduledStart;
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? completedAt;
@@ -50,6 +52,8 @@ class TodoNode {
     String? notes,
     Deadline? deadline,
     bool clearDeadline = false,
+    DateTime? scheduledStart,
+    bool clearScheduledStart = false,
     DateTime? createdAt,
     DateTime? updatedAt,
     DateTime? completedAt,
@@ -57,7 +61,6 @@ class TodoNode {
     DateTime? abandonedAt,
     bool clearAbandonedAt = false,
     DateTime? deletedAt,
-    bool clearDeletedAt = false,
     int? manualOrder,
     bool? isArchived,
     bool? isEventArchived,
@@ -69,11 +72,14 @@ class TodoNode {
       title: title ?? this.title,
       notes: notes ?? this.notes,
       deadline: clearDeadline ? null : (deadline ?? this.deadline),
+      scheduledStart: clearScheduledStart
+          ? null
+          : (scheduledStart ?? this.scheduledStart),
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       completedAt: clearCompletedAt ? null : (completedAt ?? this.completedAt),
       abandonedAt: clearAbandonedAt ? null : (abandonedAt ?? this.abandonedAt),
-      deletedAt: clearDeletedAt ? null : (deletedAt ?? this.deletedAt),
+      deletedAt: deletedAt ?? this.deletedAt,
       manualOrder: manualOrder ?? this.manualOrder,
       isArchived: isArchived ?? this.isArchived,
       isEventArchived: isEventArchived ?? this.isEventArchived,
@@ -88,6 +94,7 @@ class TodoNode {
     'notes': notes,
     'deadline_date': deadline?.storage.date,
     'deadline_at': deadline?.storage.instantMilliseconds,
+    'scheduled_start_at': scheduledStart?.toUtc().millisecondsSinceEpoch,
     'created_at': createdAt.toUtc().millisecondsSinceEpoch,
     'updated_at': updatedAt.toUtc().millisecondsSinceEpoch,
     'completed_at': completedAt?.toUtc().millisecondsSinceEpoch,
@@ -119,6 +126,7 @@ class TodoNode {
       createdAt: nullableDate('created_at')!,
       updatedAt: nullableDate('updated_at')!,
       completedAt: nullableDate('completed_at'),
+      scheduledStart: nullableDate('scheduled_start_at'),
       abandonedAt: nullableDate('abandoned_at'),
       deletedAt: nullableDate('deleted_at'),
       manualOrder: map['manual_order']! as int,

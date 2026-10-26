@@ -48,6 +48,8 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1100, 760));
     await tester.pumpWidget(TodoApp(controller: controller));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('calendar-task-list')));
+    await tester.pumpAndSettle();
 
     expect(find.text('工作项目'), findsOneWidget);
     expect(find.text('发布准备'), findsOneWidget);
@@ -145,6 +147,8 @@ void main() {
     controller.setView(AppView.timeline);
     await tester.binding.setSurfaceSize(const Size(1100, 760));
     await tester.pumpWidget(TodoApp(controller: controller));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('calendar-task-list')));
     await tester.pumpAndSettle();
 
     expect(

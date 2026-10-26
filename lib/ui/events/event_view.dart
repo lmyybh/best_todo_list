@@ -15,9 +15,10 @@ import '../common/task_move_drag.dart';
 import 'event_board_view.dart';
 
 class EventView extends StatelessWidget {
-  const EventView({required this.controller, super.key});
+  const EventView({required this.controller, this.child, super.key});
 
   final AppController controller;
+  final Widget? child;
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +32,7 @@ class EventView extends StatelessWidget {
             onTap: controller.eventDetailOpen
                 ? controller.showEventOverview
                 : null,
-            child: EventBoardView(controller: controller),
+            child: child ?? EventBoardView(controller: controller),
           ),
         ),
         if (controller.eventDetailOpen && node != null)
@@ -177,7 +178,12 @@ class _EventHeader extends StatelessWidget {
         .where((leaf) => leaf.completedAt != null)
         .length;
     final completedAt = tree.effectiveCompletedAt(node.id);
-    final path = tree.pathFor(node.id);
+    final pathNodes = <TodoNode>[node];
+    var ancestor = node;
+    while (ancestor.parentId != null) {
+      ancestor = tree.nodes[ancestor.parentId]!;
+      pathNodes.insert(0, ancestor);
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 16, 18),
       child: Column(
@@ -226,9 +232,48 @@ class _EventHeader extends StatelessWidget {
                           controller.updateTitle(node.id, value),
                     ),
                     const SizedBox(height: 7),
-                    Text(
-                      <String>['所有事件', ...path].join('  /  '),
-                      style: TextStyle(color: colors.faint, fontSize: 12),
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        for (final part in pathNodes) ...[
+                          if (part != pathNodes.first)
+                            Text(' / ', style: TextStyle(color: colors.faint)),
+                          InkWell(
+                            key: ValueKey('detail-path-${part.id}'),
+                            onTap: () => controller.showInEventTree(part.id),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Text(
+                                part.title,
+                                style: TextStyle(
+                                  color: colors.muted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        if (node.deadline != null &&
+                            controller.tree.isLeaf(node.id))
+                          TextButton.icon(
+                            key: const ValueKey('detail-show-calendar'),
+                            onPressed: () => controller.showInCalendar(node.id),
+                            icon: const Icon(
+                              Icons.calendar_today_outlined,
+                              size: 14,
+                            ),
+                            label: Text(
+                              controller.view == AppView.timeline
+                                  ? '查看截止日期'
+                                  : '在日程中查看',
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 9),
                     Wrap(
@@ -1004,16 +1049,9 @@ Future<void> _deleteSelected(
     context: context,
     builder: (context) => DeleteConfirmationDialog(
       title: isLeaf ? '删除这个任务？' : '删除这个事件？',
-      message: isLeaf ? '删除后可以在提示消失前撤销。' : '它的所有子任务也会一起删除。你可以在提示消失前撤销。',
+      message: isLeaf ? '任务将从列表中移除。' : '它的所有子任务也会一起删除。',
     ),
   );
   if (confirmed != true || !context.mounted) return;
-  final result = await controller.delete(node.id);
-  if (!context.mounted || result is NodeWriteFailure) return;
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(isLeaf ? '任务已删除' : '事件已删除'),
-      action: SnackBarAction(label: '撤销', onPressed: controller.undoDelete),
-    ),
-  );
+  await controller.delete(node.id);
 }

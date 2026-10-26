@@ -8,11 +8,13 @@ environment:
 
 dependencies:
   auto_updater: ^1.0.0
+  calendar_date_picker2: 3.0.0
   flutter:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
   http: ^1.6.0
+  kalender: 0.33.0
   package_info_plus: ^10.2.1
   path: ^1.9.1
   sqflite_common_ffi: ^2.4.0+3

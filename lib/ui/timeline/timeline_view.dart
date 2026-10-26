@@ -503,7 +503,6 @@ class _TimelineActivityRowState extends State<_TimelineActivityRow> {
 
     void openNode() {
       controller.select(node.id);
-      controller.setView(AppView.events);
     }
 
     return Semantics(
@@ -765,7 +764,6 @@ class _TimelineTreeRowState extends State<_TimelineTreeRow> {
 
     void openNode() {
       controller.select(node.id);
-      controller.setView(AppView.events);
     }
 
     return Focus(

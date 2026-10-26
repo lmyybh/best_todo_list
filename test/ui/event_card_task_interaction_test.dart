@@ -2,9 +2,11 @@ import 'package:best_todo_list/app/app_controller.dart';
 import 'package:best_todo_list/app/app_theme.dart';
 import 'package:best_todo_list/app/node_persistence_workspace.dart';
 import 'package:best_todo_list/domain/node_repository.dart';
+import 'package:best_todo_list/domain/deadline.dart';
 import 'package:best_todo_list/domain/todo_node.dart';
 import 'package:best_todo_list/ui/events/event_board_view.dart';
 import 'package:best_todo_list/ui/events/event_card_task_interaction.dart';
+import 'package:best_todo_list/ui/common/formatters.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,6 +17,29 @@ import '../helpers/memory_node_repository.dart';
 import '../helpers/write_result.dart';
 
 void main() {
+  testWidgets('子任务悬停时截止日期保持可见', (tester) async {
+    final fixture = await _InteractionFixture.create();
+    final task = await fixture.createTask(title: '检查发布说明');
+    final deadline = TimedDeadline(DateTime(2026, 10, 30, 18));
+    await fixture.controller.updateDeadline(task.id, deadline);
+    await fixture.pump(tester);
+    final row = find.byKey(ValueKey<String>('event-row-${task.id}'));
+    final label = find.descendant(
+      of: row,
+      matching: find.text(formatCompactDeadline(deadline)),
+    );
+    expect(label.hitTestable(), findsOneWidget);
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(tester.getCenter(row));
+    await tester.pumpAndSettle();
+    expect(label.hitTestable(), findsOneWidget);
+    await mouse.moveTo(Offset.zero);
+    await tester.pumpAndSettle();
+    expect(label.hitTestable(), findsOneWidget);
+  });
+
   testWidgets('事件卡片任务交互通过根事件展示子任务', (tester) async {
     final fixture = await _InteractionFixture.create();
     await fixture.createTask(title: '检查发布说明');
@@ -528,7 +553,7 @@ void main() {
     expect(fixture.controller.tree.nodes[leaf.id]?.completedAt, isNotNull);
   });
 
-  testWidgets('完成默认保留，支持收起、展开、恢复和撤销', (tester) async {
+  testWidgets('完成默认保留，支持收起、展开和恢复，不弹出提示', (tester) async {
     final fixture = await _InteractionFixture.create(idPrefix: 'archive');
     final leaf = await fixture.createTask(title: '已经结束');
     await fixture.pump(tester);
@@ -599,12 +624,11 @@ void main() {
     await tester.tap(find.text('收起'));
     await tester.pumpAndSettle();
     expect(row, findsNothing);
-    await tester.tap(find.text('撤销'));
-    await tester.pumpAndSettle();
-    expect(row, findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(fixture.controller.tree.nodes[leaf.id]!.isArchived, isTrue);
   });
 
-  testWidgets('放弃叶子任务后从事件卡片隐藏且可以撤销', (tester) async {
+  testWidgets('放弃叶子任务后从事件卡片隐藏，不弹出提示', (tester) async {
     final fixture = await _InteractionFixture.create(idPrefix: 'abandon');
     final leaf = await fixture.createTask(title: '不再处理');
     await fixture.pump(tester);
@@ -626,18 +650,10 @@ void main() {
 
     expect(fixture.controller.tree.nodes[leaf.id]?.isAbandoned, isTrue);
     expect(row, findsNothing);
-    expect(find.text('任务已放弃'), findsOneWidget);
-
-    await tester.tap(find.text('撤销'));
-    await tester.pumpAndSettle();
-    expect(
-      fixture.controller.tree.nodes[leaf.id]?.status,
-      TodoNodeStatus.active,
-    );
-    expect(row, findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
   });
 
-  testWidgets('有子任务的节点也可以整支放弃并撤销', (tester) async {
+  testWidgets('有子任务的节点也可以整支放弃，不弹出提示', (tester) async {
     final fixture = await _InteractionFixture.create(
       idPrefix: 'abandon-branch',
     );
@@ -664,10 +680,7 @@ void main() {
     expect(find.text('不再继续的阶段'), findsNothing);
     expect(find.text('保留的子任务'), findsNothing);
 
-    await tester.tap(find.text('撤销'));
-    await tester.pumpAndSettle();
-    expect(find.text('不再继续的阶段'), findsOneWidget);
-    expect(find.text('保留的子任务'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
   });
 
   testWidgets('支持折叠和展开分支任务', (tester) async {

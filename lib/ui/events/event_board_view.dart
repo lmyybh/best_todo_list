@@ -13,6 +13,7 @@ import '../../domain/todo_node.dart';
 import '../common/create_node_dialog.dart';
 import '../common/delete_node.dart';
 import '../common/formatters.dart';
+import '../common/event_color.dart';
 import 'event_board_layout.dart';
 import 'event_board_reorder_session.dart';
 import 'event_card_task_interaction.dart';
@@ -52,6 +53,10 @@ class _EventBoardViewState extends State<EventBoardView> {
   late EventBoardFilter selectedFilter;
   bool focusBoardBuilt = false;
   bool showArchivedEvents = false;
+  int _navigationRevision = 0;
+  final Map<String, GlobalKey> _cardKeys = {};
+  String? _highlightedRoot;
+  Timer? _navigationHighlightTimer;
   Object? allBoardCacheKey;
   Widget? allBoardCache;
   Object? focusBoardCacheKey;
@@ -66,6 +71,7 @@ class _EventBoardViewState extends State<EventBoardView> {
 
   @override
   void dispose() {
+    _navigationHighlightTimer?.cancel();
     autoScrollTimer?.cancel();
     responsiveReflowTimer?.cancel();
     boardScrollController.dispose();
@@ -76,6 +82,33 @@ class _EventBoardViewState extends State<EventBoardView> {
   @override
   Widget build(BuildContext context) {
     final sourceTree = widget.controller.tree;
+    if (_navigationRevision != widget.controller.boardNavigationRevision) {
+      _navigationRevision = widget.controller.boardNavigationRevision;
+      var target = sourceTree.nodes[widget.controller.boardFocusId];
+      while (target?.parentId != null) {
+        target = sourceTree.nodes[target!.parentId];
+      }
+      if (target != null) {
+        selectedFilter = EventBoardFilter.all;
+        showArchivedEvents = target.isEventArchived;
+        _highlightedRoot = target.id;
+        final rootId = target.id;
+        _navigationHighlightTimer?.cancel();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final targetContext = _cardKeys[rootId]?.currentContext;
+          if (mounted && targetContext != null) {
+            Scrollable.ensureVisible(
+              targetContext,
+              alignment: 0.1,
+              duration: const Duration(milliseconds: 180),
+            );
+          }
+        });
+        _navigationHighlightTimer = Timer(const Duration(seconds: 2), () {
+          if (mounted) setState(() => _highlightedRoot = null);
+        });
+      }
+    }
     final roots = sourceTree.visibleChildrenOf(null);
     final archivedCount = roots.where((node) => node.isEventArchived).length;
     final allRoots = roots
@@ -348,8 +381,8 @@ class _EventBoardViewState extends State<EventBoardView> {
       node: item!,
       tree: displayTree,
       now: widget.controller.now,
-      color: _eventColor(item),
-      dropTargeted: dropTargeted,
+      color: eventColor(item),
+      dropTargeted: dropTargeted || _highlightedRoot == item.id,
       focusMode: focusMode,
       todayTaskCount: todayTaskCount,
       onDragStarted: () => _startDragging(item.id, allRoots),
@@ -402,7 +435,12 @@ class _EventBoardViewState extends State<EventBoardView> {
         key: item == null
             ? const ValueKey<String>('new-event-card')
             : ValueKey<String>('event-card-${item.id}'),
-        child: child,
+        child: item != null && !focusMode
+            ? KeyedSubtree(
+                key: _cardKeys.putIfAbsent(item.id, GlobalKey.new),
+                child: child,
+              )
+            : child,
       ),
     );
   }
@@ -756,25 +794,6 @@ class _EventBoardFilterLabel extends StatelessWidget {
   }
 }
 
-Color _eventColor(TodoNode node) {
-  var seed = 2166136261;
-  for (final unit in node.id.codeUnits) {
-    seed = ((seed ^ unit) * 16777619) & 0xffffffff;
-  }
-  double next() {
-    seed = (seed * 1664525 + 1013904223) & 0xffffffff;
-    return seed / 4294967296;
-  }
-
-  final fallbackHue = next() * 360;
-  return HSVColor.fromAHSV(
-    1,
-    node.eventHue ?? fallbackHue,
-    0.40 + next() * 0.05,
-    0.70 + next() * 0.05,
-  ).toColor();
-}
-
 class _EventCard extends StatefulWidget {
   const _EventCard({
     required this.controller,
@@ -1099,15 +1118,17 @@ class _EventCardState extends State<_EventCard> {
                                 if (value == 'rename') {
                                   _renameNode(context, controller, node);
                                 } else if (value == 'archiveEvent') {
-                                  _setEventArchived(context, controller, node);
-                                } else if (value == 'archiveCompleted') {
-                                  _archiveCompletedTasks(
-                                    context,
-                                    controller,
-                                    node,
+                                  controller.setEventArchived(
+                                    node.id,
+                                    !node.isEventArchived,
                                   );
+                                } else if (value == 'archiveCompleted') {
+                                  controller.archiveCompletedTasks(node.id);
                                 } else if (value == 'abandon') {
-                                  _abandonTask(context, controller, node);
+                                  controller.setTaskStatus(
+                                    node.id,
+                                    TodoNodeStatus.abandoned,
+                                  );
                                 } else if (value == 'delete') {
                                   confirmDeleteNode(context, controller, node);
                                 }
@@ -1254,69 +1275,6 @@ class _EventCardState extends State<_EventCard> {
       ),
     );
   }
-}
-
-Future<void> _setEventArchived(
-  BuildContext context,
-  AppController controller,
-  TodoNode node,
-) async {
-  final archived = !node.isEventArchived;
-  final messenger = ScaffoldMessenger.of(context);
-  final result = await controller.setEventArchived(node.id, archived);
-  if (!messenger.mounted || result is NodeWriteFailure) return;
-  messenger.showSnackBar(
-    SnackBar(
-      content: Text(archived ? '事件已归档' : '事件已恢复'),
-      action: SnackBarAction(
-        label: '撤销',
-        onPressed: () => controller.setEventArchived(node.id, !archived),
-      ),
-    ),
-  );
-}
-
-Future<void> _archiveCompletedTasks(
-  BuildContext context,
-  AppController controller,
-  TodoNode node,
-) async {
-  final result = await controller.archiveCompletedTasks(node.id);
-  if (!context.mounted) return;
-  if (result case NodeWriteSuccess<List<String>>(:final value)) {
-    if (value.isEmpty) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('已收起 ${value.length} 项已完成任务'),
-        action: SnackBarAction(
-          label: '撤销',
-          onPressed: () => controller.restoreArchivedTasks(value),
-        ),
-      ),
-    );
-  }
-}
-
-Future<void> _abandonTask(
-  BuildContext context,
-  AppController controller,
-  TodoNode node,
-) async {
-  final result = await controller.setTaskStatus(
-    node.id,
-    TodoNodeStatus.abandoned,
-  );
-  if (!context.mounted || result is NodeWriteFailure) return;
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: const Text('任务已放弃'),
-      action: SnackBarAction(
-        label: '撤销',
-        onPressed: () =>
-            controller.setTaskStatus(node.id, TodoNodeStatus.active),
-      ),
-    ),
-  );
 }
 
 class _DeadlineLabel extends StatelessWidget {

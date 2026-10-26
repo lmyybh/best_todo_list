@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:best_todo_list/app/node_persistence_workspace.dart';
+import 'package:best_todo_list/app/node_write_result.dart';
 import 'package:best_todo_list/data/app_database.dart';
 import 'package:best_todo_list/data/sqlite_node_repository.dart';
 import 'package:best_todo_list/domain/deadline.dart';
@@ -12,6 +13,79 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../helpers/write_result.dart';
 
 void main() {
+  test('版本8迁移保留旧任务，新事件和拖选任务原子保存且重启后保留区间', () async {
+    final directory = await Directory.systemTemp.createTemp('todo_scheduled_');
+    final path = p.join(directory.path, 'test.sqlite');
+    try {
+      final db = await AppDatabase.open(path: path);
+      final now = DateTime.utc(2026, 10, 21);
+      final old = TodoNode(
+        id: 'old',
+        title: '旧任务',
+        createdAt: now,
+        updatedAt: now,
+        manualOrder: 1000,
+        deadline: TimedDeadline(now),
+      );
+      await db.insert('nodes', old.toMap());
+      await db.execute('ALTER TABLE nodes DROP COLUMN scheduled_start_at');
+      await db.execute('PRAGMA user_version = 8');
+      await db.close();
+      final upgraded = await AppDatabase.open(path: path);
+      expect(
+        TodoNode.fromMap((await upgraded.query('nodes')).single).scheduledStart,
+        isNull,
+      );
+      await upgraded.execute(
+        "CREATE TRIGGER reject_task BEFORE INSERT ON nodes WHEN NEW.parent_id IS NOT NULL BEGIN SELECT RAISE(ABORT, 'reject task'); END",
+      );
+      var id = 0;
+      final workspace = NodePersistenceWorkspace(
+        SqliteNodeRepository(upgraded),
+        idGenerator: () => 'range-${++id}',
+      );
+      await workspace.load();
+      final start = DateTime(2026, 10, 21, 9, 15);
+      final end = DateTime(2026, 10, 21, 11, 45);
+      expect(
+        await workspace.createScheduledTask(
+          title: '新任务',
+          eventName: '新事件',
+          start: start,
+          end: end,
+        ),
+        isA<NodeWriteFailure>(),
+      );
+      expect((await upgraded.query('nodes')).map((row) => row['id']), ['old']);
+      expect(workspace.nodes, hasLength(1));
+      await upgraded.execute('DROP TRIGGER reject_task');
+      final task = await expectWriteSuccess(
+        workspace.createScheduledTask(
+          title: '新任务',
+          eventName: '新事件',
+          start: start,
+          end: end,
+        ),
+      );
+      await workspace.close();
+      final repository = SqliteNodeRepository(
+        await AppDatabase.open(path: path),
+      );
+      final restored = await repository.loadNodes();
+      expect(restored, hasLength(3));
+      final savedTask = restored.singleWhere((node) => node.id == task.id);
+      expect(savedTask.scheduledStart?.toLocal(), start);
+      expect((savedTask.deadline as TimedDeadline).localTime, end);
+      expect(
+        restored.singleWhere((node) => node.id == savedTask.parentId).title,
+        '新事件',
+      );
+      await repository.close();
+    } finally {
+      await directory.delete(recursive: true);
+    }
+  });
+
   test('重启后相同日期不论设置方式都跟随父任务延后和清除', () async {
     final directory = await Directory.systemTemp.createTemp('todo_inherited_');
     final path = p.join(directory.path, 'test.sqlite');

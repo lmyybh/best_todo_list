@@ -164,11 +164,14 @@ void main() {
     await tester.pumpWidget(TodoApp(controller: controller));
     await tester.pumpAndSettle();
 
-    final breadcrumb = find.text('所有事件  /  新版发布');
+    final breadcrumb = find.descendant(
+      of: find.byKey(ValueKey('detail-path-${root.id}')),
+      matching: find.text('新版发布'),
+    );
     expect(breadcrumb, findsOneWidget);
     expect(
       tester.widget<Text>(breadcrumb).style?.color,
-      AppColors.of(tester.element(breadcrumb)).faint,
+      AppColors.of(tester.element(breadcrumb)).muted,
     );
     expect(find.text('手动排序'), findsOneWidget);
     expect(find.text('备注'), findsOneWidget);
@@ -328,7 +331,7 @@ void main() {
     await tester.tap(find.text('删除任务'));
     await tester.pumpAndSettle();
     expect(find.text('删除这个任务？'), findsOneWidget);
-    expect(find.text('删除后可以在提示消失前撤销。'), findsOneWidget);
+    expect(find.text('任务将从列表中移除。'), findsOneWidget);
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
   });
@@ -385,6 +388,8 @@ void main() {
 
     await tester.tap(timelineNavigation);
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('calendar-task-list')));
+    await tester.pumpAndSettle();
     expect(find.text('回到今天'), findsOneWidget);
     expect(find.text('今天'), findsWidgets);
     expect(find.text('有日期任务'), findsOneWidget);
@@ -410,6 +415,8 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('timeline-navigation')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('calendar-task-list')));
+    await tester.pumpAndSettle();
     expect(find.text('已放弃'), findsWidgets);
     expect(find.text('不再处理的任务'), findsOneWidget);
 
@@ -431,6 +438,8 @@ void main() {
     await tester.pumpWidget(TodoApp(controller: controller));
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byKey(const ValueKey('calendar-task-list')));
+    await tester.pumpAndSettle();
     expect(find.text('已逾期'), findsOneWidget);
     final titleFinder = find.descendant(
       of: find.byKey(ValueKey<String>('timeline-row-${task.id}')),

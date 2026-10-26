@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/app_controller.dart';
-import '../../app/node_persistence_workspace.dart';
-import '../../app/node_write_result.dart';
 import '../../domain/todo_node.dart';
 
 class TaskMoveDragData {
@@ -123,12 +121,7 @@ class TaskMoveDropTarget extends StatelessWidget {
     onAcceptWithDetails: (details) {
       if (details.data.canceled) return;
       unawaited(
-        _moveTo(
-          context,
-          controller,
-          nodeId: details.data.nodeId,
-          newParentId: parentId,
-        ),
+        controller.move(nodeId: details.data.nodeId, newParentId: parentId),
       );
     },
     builder: (context, candidates, _) => Stack(
@@ -241,9 +234,7 @@ class _TaskMoveRowDropTargetState extends State<TaskMoveRowDropTarget> {
       );
       placement = _TaskMovePlacement.inside;
       unawaited(
-        _moveTo(
-          context,
-          widget.controller,
+        widget.controller.move(
           nodeId: details.data.nodeId,
           newParentId: destination.parentId,
           newIndex: destination.index,
@@ -300,24 +291,4 @@ bool _canMoveTo(
   }
   return newParentId == null ||
       !tree.isDescendant(nodeId: newParentId, ancestorId: nodeId);
-}
-
-Future<void> _moveTo(
-  BuildContext context,
-  AppController controller, {
-  required String nodeId,
-  required String? newParentId,
-  int? newIndex,
-}) async {
-  final result = await controller.move(
-    nodeId: nodeId,
-    newParentId: newParentId,
-    newIndex: newIndex,
-  );
-  if (!context.mounted || result is NodeWriteSuccess<void>) return;
-  final error = (result as NodeWriteFailure<void>).error;
-  final message = error is NodeRuleException ? error.message : '移动失败，请重试';
-  ScaffoldMessenger.maybeOf(
-    context,
-  )?.showSnackBar(SnackBar(content: Text(message)));
 }

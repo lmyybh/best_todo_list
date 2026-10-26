@@ -57,6 +57,7 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
   Timer? highlightTimer;
   Timer? scrollHandoffTimer;
   String? highlightedId;
+  int _navigationRevision = 0;
   int? guardedScrollDirection;
 
   @override
@@ -313,21 +314,7 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
     if (!await editingSession.finishActive() || !mounted) return;
     inlineDraftController.clear();
     inlineRenameController.clear();
-    final result = await widget.controller.setTaskStatus(
-      node.id,
-      TodoNodeStatus.abandoned,
-    );
-    if (!mounted || result is NodeWriteFailure) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('任务已放弃'),
-        action: SnackBarAction(
-          label: '撤销',
-          onPressed: () =>
-              widget.controller.setTaskStatus(node.id, TodoNodeStatus.active),
-        ),
-      ),
-    );
+    await widget.controller.setTaskStatus(node.id, TodoNodeStatus.abandoned);
   }
 
   Future<void> _archiveTaskNode(TodoNode node) async {
@@ -337,15 +324,6 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
     final result = await widget.controller.setTaskArchived(node.id, archived);
     if (!mounted || result is NodeWriteFailure || !archived) return;
     setState(() => showArchived = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('任务已收起'),
-        action: SnackBarAction(
-          label: '撤销',
-          onPressed: () => widget.controller.setTaskArchived(node.id, false),
-        ),
-      ),
-    );
   }
 
   void _syncEditingText() {
@@ -403,6 +381,27 @@ class _EventCardTaskInteractionState extends State<EventCardTaskInteraction> {
         .length;
     if (archivedCount > previousArchivedCount) showArchived = false;
     previousArchivedCount = archivedCount;
+    if (_navigationRevision != controller.boardNavigationRevision) {
+      _navigationRevision = controller.boardNavigationRevision;
+      var target = tree.nodes[controller.boardFocusId];
+      if (target != null &&
+          tree.isDescendant(
+            nodeId: target.id,
+            ancestorId: widget.rootEventId,
+          )) {
+        highlightedId = target.id;
+        while (target != null) {
+          collapsedIds.remove(target.id);
+          expandedBeyondPreviewIds.add(target.id);
+          if (target.isArchived) showArchived = true;
+          target = tree.nodes[target.parentId];
+        }
+        highlightTimer?.cancel();
+        highlightTimer = Timer(const Duration(seconds: 2), () {
+          if (mounted) setState(() => highlightedId = null);
+        });
+      }
+    }
     final colors = AppColors.of(context);
     final interaction = _EventTaskTreeInteraction(
       controller: controller,
@@ -1051,7 +1050,7 @@ class _EventTreeRowState extends State<_EventTreeRow> {
                                 ),
                               ),
                       ),
-                      if (node.deadline != null && !hovered && !renaming)
+                      if (node.deadline != null && !renaming)
                         Text(
                           formatCompactDeadline(node.deadline!),
                           style: TextStyle(

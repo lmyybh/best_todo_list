@@ -19,7 +19,7 @@ class UnsupportedDatabaseVersion implements Exception {
 }
 
 class AppDatabase {
-  static const int currentVersion = 8;
+  static const int currentVersion = 9;
 
   static Future<Database> open({String? path}) async {
     sqfliteFfiInit();
@@ -37,7 +37,7 @@ class AppDatabase {
           await _createNodeIndexes(database);
         },
         onUpgrade: (database, oldVersion, newVersion) async {
-          if (oldVersion >= 1 && oldVersion <= 7 && newVersion == 8) {
+          if (oldVersion >= 1 && oldVersion <= 8 && newVersion == 9) {
             if (oldVersion < 4) {
               await _migrateLegacyDeadlines(database, oldVersion);
             }
@@ -68,6 +68,11 @@ class AppDatabase {
             if (!columns.contains('event_hue')) {
               await database.execute(
                 'ALTER TABLE nodes ADD COLUMN event_hue REAL NULL',
+              );
+            }
+            if (!columns.contains('scheduled_start_at')) {
+              await database.execute(
+                'ALTER TABLE nodes ADD COLUMN scheduled_start_at INTEGER NULL',
               );
             }
             return;
@@ -192,6 +197,7 @@ Future<void> _createNodesTable(DatabaseExecutor database) =>
     notes TEXT NOT NULL DEFAULT '',
     deadline_date TEXT NULL,
     deadline_at INTEGER NULL,
+    scheduled_start_at INTEGER NULL,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     completed_at INTEGER NULL,
