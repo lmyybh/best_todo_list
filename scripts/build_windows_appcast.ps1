@@ -33,7 +33,7 @@ if ($LASTEXITCODE -ne 0 -or $signature -notmatch '^[A-Za-z0-9+/]+={0,2}$') {
 $installerLength = (Get-Item -LiteralPath $release.InstallerPath).Length
 $releaseUrl = "https://github.com/lmyybh/best_todo_list/releases/tag/v$($release.Version)"
 $installerUrl = (
-    'https://github.com/lmyybh/best_todo_list/releases/latest/download/' +
+    "https://github.com/lmyybh/best_todo_list/releases/download/v$($release.Version)/" +
     "$($release.InstallerBaseName).exe"
 )
 $pubDate = [DateTimeOffset]::Now.ToString('ddd, dd MMM yyyy HH:mm:ss zzz', [Globalization.CultureInfo]::InvariantCulture)

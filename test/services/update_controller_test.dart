@@ -46,6 +46,9 @@ void main() {
     expect(installCount, 1);
     expect(service.openedUri, isNull);
     expect(controller.usesInstaller, isTrue);
+    expect(controller.state.actionOpened, isTrue);
+    expect(controller.state.message, '请在更新窗口中继续下载和安装');
+    expect(controller.state.acting, isFalse);
   });
 
   test('弹窗关闭后延迟返回的版本读取不再发送通知', () async {
@@ -59,6 +62,38 @@ void main() {
     await expectLater(initialize, completes);
   });
 
+  test('启动更新时禁止重复操作和检查，失败后可以重试', () async {
+    final started = Completer<void>();
+    var installCount = 0;
+    final controller = UpdateController(
+      _FakeUpdateService(release: _release()),
+      installUpdate: () {
+        installCount += 1;
+        return installCount == 1 ? started.future : Future<void>.value();
+      },
+    );
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.check();
+
+    final action = controller.performAvailableAction();
+    await controller.performAvailableAction();
+    await controller.check();
+    expect(installCount, 1);
+    expect(controller.state.acting, isTrue);
+    expect(controller.state.checking, isFalse);
+
+    started.completeError(StateError('启动失败'));
+    await action;
+    expect(controller.state.hasError, isTrue);
+    expect(controller.state.actionOpened, isFalse);
+
+    await controller.performAvailableAction();
+    expect(installCount, 2);
+    expect(controller.state.hasError, isFalse);
+    expect(controller.state.actionOpened, isTrue);
+  });
+
   test('版本读取失败时返回可展示错误', () async {
     final controller = UpdateController(
       _FakeUpdateService(loadError: StateError('版本不可用')),
@@ -68,7 +103,8 @@ void main() {
     await controller.initialize();
 
     expect(controller.state.currentVersion, isNull);
-    expect(controller.state.message, '无法读取当前版本');
+    expect(controller.state.message, '无法读取当前版本，请重试');
+    expect(controller.state.errorDetails, contains('版本不可用'));
   });
 
   test('无 Release 时结束检查并给出提示', () async {
@@ -92,7 +128,8 @@ void main() {
     await controller.initialize();
     await controller.check();
 
-    expect(controller.state.message, contains('网络不可用'));
+    expect(controller.state.message, '暂时无法检查更新，请稍后重试');
+    expect(controller.state.errorDetails, contains('网络不可用'));
     expect(controller.state.checking, isFalse);
   });
 
@@ -108,7 +145,8 @@ void main() {
     await controller.performAvailableAction();
 
     expect(controller.state.availableRelease, release);
-    expect(controller.state.message, '无法打开系统浏览器');
+    expect(controller.state.message, '无法打开下载页面，请重试');
+    expect(controller.state.hasError, isTrue);
     expect(controller.state.acting, isFalse);
   });
 
@@ -125,7 +163,8 @@ void main() {
     await controller.performAvailableAction();
 
     expect(controller.state.availableRelease, release);
-    expect(controller.state.message, contains('启动更新失败'));
+    expect(controller.state.message, '无法启动更新，请重试');
+    expect(controller.state.errorDetails, contains('启动失败'));
     expect(controller.state.acting, isFalse);
   });
 
@@ -141,7 +180,8 @@ void main() {
     await controller.performAvailableAction();
 
     expect(controller.state.availableRelease, release);
-    expect(controller.state.message, '无法打开系统浏览器');
+    expect(controller.state.message, '无法打开下载页面，请重试');
+    expect(controller.state.hasError, isTrue);
     expect(controller.state.acting, isFalse);
   });
 }

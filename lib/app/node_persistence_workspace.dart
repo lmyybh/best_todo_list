@@ -395,6 +395,8 @@ class NodePersistenceWorkspace {
 
   Future<void> close() => _closeFuture ??= _close();
 
+  Future<void> flush() => _idleCompleter?.future ?? Future<void>.value();
+
   Future<NodeWriteResult<void>> _updateNode(
     String nodeId,
     TodoNode Function(TodoNode node, DateTime now) update,

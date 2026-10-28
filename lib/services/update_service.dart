@@ -1,8 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import 'update_error.dart';
+export 'update_error.dart';
 
 const _latestReleaseUri =
     'https://api.github.com/repos/lmyybh/best_todo_list/releases/latest';
@@ -65,6 +69,7 @@ class GitHubUpdateService implements UpdateService {
             : tagName,
         notes: body['body'] is String ? body['body'] as String : '',
         pageUri: uri,
+        manifestUri: _manifestUri(body, tagName),
       );
     } on UpdateCheckException {
       rethrow;
@@ -75,6 +80,25 @@ class GitHubUpdateService implements UpdateService {
     } finally {
       if (_client == null) client.close();
     }
+  }
+
+  Uri? _manifestUri(Map<String, dynamic> body, String tag) {
+    final platform = Platform.isWindows ? 'windows' : 'macos';
+    final assets = body['assets'];
+    if (assets is! List) return null;
+    for (final asset in assets) {
+      if (asset is! Map || asset['name'] != 'update-$platform.json') continue;
+      final url = Uri.tryParse(asset['browser_download_url'] as String? ?? '');
+      if (url != null &&
+          url.scheme == 'https' &&
+          url.host == 'github.com' &&
+          url.path.startsWith(
+            '/lmyybh/best_todo_list/releases/download/$tag/',
+          )) {
+        return url;
+      }
+    }
+    return null;
   }
 
   @override
@@ -99,12 +123,32 @@ class ReleaseInfo {
     required this.name,
     required this.notes,
     required this.pageUri,
+    this.manifestUri,
   });
 
   final VersionNumber version;
   final String name;
   final String notes;
   final Uri pageUri;
+  final Uri? manifestUri;
+
+  Map<String, dynamic> toCache() => {
+    'version': version.toString(),
+    'name': name,
+    'notes': notes,
+    'pageUri': pageUri.toString(),
+    'manifestUri': manifestUri?.toString(),
+  };
+
+  factory ReleaseInfo.fromCache(Map<String, dynamic> data) => ReleaseInfo(
+    version: VersionNumber.parse(data['version'] as String),
+    name: data['name'] as String,
+    notes: data['notes'] as String,
+    pageUri: Uri.parse(data['pageUri'] as String),
+    manifestUri: data['manifestUri'] == null
+        ? null
+        : Uri.parse(data['manifestUri'] as String),
+  );
 
   bool isNewerThan(AppVersion current) => version.compareTo(current.number) > 0;
 }
@@ -135,13 +179,4 @@ class VersionNumber implements Comparable<VersionNumber> {
 
   @override
   String toString() => 'v$major.$minor.$patch';
-}
-
-class UpdateCheckException implements Exception {
-  const UpdateCheckException(this.message);
-
-  final String message;
-
-  @override
-  String toString() => message;
 }

@@ -13,9 +13,10 @@ import '../common/about_update_dialog.dart';
 import '../common/create_node_dialog.dart';
 
 class AppRail extends StatelessWidget {
-  const AppRail({required this.controller, super.key});
+  const AppRail({required this.controller, this.updates, super.key});
 
   final AppController controller;
+  final UpdateController? updates;
 
   @override
   Widget build(BuildContext context) {
@@ -46,6 +47,55 @@ class AppRail extends StatelessWidget {
                 onPressed: () => controller.setView(AppView.timeline),
               ),
               const Spacer(),
+              if (updates != null)
+                ListenableBuilder(
+                  listenable: updates!,
+                  builder: (context, _) {
+                    final state = updates!.state;
+                    if (state.availableRelease == null) {
+                      return const SizedBox.shrink();
+                    }
+                    final label = state.ready
+                        ? '重启以完成更新'
+                        : state.verifying
+                        ? '正在校验更新'
+                        : state.downloading
+                        ? '更新下载中 · ${((state.progress ?? 0) * 100).floor()}%'
+                        : state.hasError
+                        ? '更新失败，点击重试'
+                        : '有新版本';
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          _RailButton(
+                            label: label,
+                            icon: state.ready
+                                ? Icons.restart_alt
+                                : Icons.system_update_alt,
+                            selected: true,
+                            onPressed: () => _showAboutAndUpdates(context),
+                          ),
+                          if (state.downloading || state.verifying)
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(2),
+                                  child: CircularProgressIndicator(
+                                    value: state.downloading
+                                        ? state.progress
+                                        : null,
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
               _RailButton(
                 key: const ValueKey<String>('about-update-navigation'),
                 label: '关于与更新',
@@ -73,19 +123,21 @@ class AppRail extends StatelessWidget {
   }
 
   Future<void> _showAboutAndUpdates(BuildContext context) async {
-    final controller = UpdateController(
-      GitHubUpdateService(),
-      installUpdate: Platform.isWindows
-          ? WindowsUpdateInstaller().checkForUpdates
-          : null,
-    );
+    final controller =
+        updates ??
+        UpdateController(
+          GitHubUpdateService(),
+          installUpdate: Platform.isWindows
+              ? WindowsUpdateInstaller().checkForUpdates
+              : null,
+        );
     try {
       await showDialog<void>(
         context: context,
         builder: (context) => AboutUpdateDialog(controller: controller),
       );
     } finally {
-      controller.dispose();
+      if (updates == null) controller.dispose();
     }
   }
 

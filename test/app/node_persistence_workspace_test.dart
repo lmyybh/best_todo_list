@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:best_todo_list/app/node_persistence_workspace.dart';
+import 'package:best_todo_list/app/app_controller.dart';
 import 'package:best_todo_list/app/node_write_result.dart';
 import 'package:best_todo_list/domain/deadline.dart';
 import 'package:best_todo_list/domain/node_repository.dart';
@@ -11,6 +12,27 @@ import '../helpers/memory_node_repository.dart';
 import '../helpers/write_result.dart';
 
 void main() {
+  test('重启更新前等待写入完成，保存失败则阻止重启', () async {
+    final repository = _TrackingRepository()..pauseNextSave = true;
+    final controller = AppController(NodePersistenceWorkspace(repository));
+    addTearDown(controller.dispose);
+    await controller.load();
+    final write = controller.create(title: '更新前保存');
+    await repository.saveStarted.future;
+    var flushed = false;
+    final flush = controller.prepareForUpdate().then((_) => flushed = true);
+    await Future<void>.delayed(Duration.zero);
+    expect(flushed, isFalse);
+    repository.resumeSave.complete();
+    await write;
+    await flush;
+    expect(flushed, isTrue);
+    expect(controller.nodes.single.title, '更新前保存');
+    repository.failNextSave = true;
+    await controller.create(title: '保存失败的任务');
+    await expectLater(controller.prepareForUpdate(), throwsStateError);
+  });
+
   test('写入成功直接发布持久化快照且不重新读取仓库', () async {
     final repository = _TrackingRepository();
     final workspace = NodePersistenceWorkspace(

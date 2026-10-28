@@ -1,0 +1,137 @@
+name: Desktop release
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - id: version
+        shell: bash
+        run: |
+          version=$(sed -nE 's/^version:[[:space:]]*([0-9]+\.[0-9]+\.[0-9]+)[[:space:]]*$/\1/p' pubspec.yaml)
+          test -n "$version"
+          test "$GITHUB_REF_NAME" = "v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+  build:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      UPDATE_PUBLIC_KEY: ${{ vars.UPDATE_PUBLIC_KEY }}
+      UPDATE_SIGNING_SEED: ${{ secrets.UPDATE_SIGNING_SEED }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Validate platform installation helpers
+        run: flutter test test/services/update/desktop_update_installer_test.dart
+      - name: Build signed macOS release
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${UPDATE_PUBLIC_KEY:?}" "${UPDATE_SIGNING_SEED:?}" "${MACOS_CERTIFICATE_P12:?}"
+          : "${MACOS_CERTIFICATE_PASSWORD:?}" "${MACOS_SIGNING_IDENTITY:?}"
+          : "${APPLE_ID:?}" "${APPLE_TEAM_ID:?}" "${APPLE_APP_PASSWORD:?}"
+          keychain="$RUNNER_TEMP/release.keychain-db"
+          keychain_password=$(openssl rand -hex 24)
+          trap 'security delete-keychain "$keychain"; rm -f "$RUNNER_TEMP/update-seed" "$RUNNER_TEMP/certificate.p12"' EXIT
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          echo "$MACOS_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain"
+          xcrun notarytool store-credentials release-notary --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --keychain "$keychain"
+          printf '%s' "$UPDATE_SIGNING_SEED" > "$RUNNER_TEMP/update-seed"
+          chmod 600 "$RUNNER_TEMP/update-seed"
+          export UPDATE_SIGNING_KEY_PATH="$RUNNER_TEMP/update-seed" MACOS_NOTARY_PROFILE=release-notary MACOS_NOTARY_KEYCHAIN="$keychain"
+          bash scripts/build_macos_update.sh
+      - name: Build signed Windows release
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_PFX: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINSPARKLE_DSA_PRIVATE_KEY: ${{ secrets.WINSPARKLE_DSA_PRIVATE_KEY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('UPDATE_PUBLIC_KEY', 'UPDATE_SIGNING_SEED', 'WINDOWS_CERTIFICATE_PFX', 'WINDOWS_CERTIFICATE_PASSWORD', 'WINSPARKLE_DSA_PRIVATE_KEY')) {
+            if (-not [Environment]::GetEnvironmentVariable($name)) { throw "Missing $name" }
+          }
+          $key = Join-Path $env:RUNNER_TEMP 'update-seed'
+          $certificate = Join-Path $env:RUNNER_TEMP 'certificate.pfx'
+          $dsa = Join-Path $env:RUNNER_TEMP 'dsa.pem'
+          try {
+            [IO.File]::WriteAllText($key, $env:UPDATE_SIGNING_SEED)
+            [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_PFX))
+            [IO.File]::WriteAllText($dsa, $env:WINSPARKLE_DSA_PRIVATE_KEY)
+            ./scripts/build_windows_update.ps1 -SigningKeyPath $key -PublicKey $env:UPDATE_PUBLIC_KEY -CertificatePath $certificate -CertificatePassword $env:WINDOWS_CERTIFICATE_PASSWORD -WinSparklePrivateKeyPath $dsa
+          } finally {
+            Remove-Item -LiteralPath $key, $certificate, $dsa -Force -ErrorAction SilentlyContinue
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ runner.os }}
+          path: build/installer/*
+          if-no-files-found: error
+  publish:
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: v${{ needs.validate.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release
+      - name: Publish complete release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f release/update-windows.json
+          test -f release/update-macos.json
+          test -f release/appcast-windows.xml
+          # Versioned release assets are immutable; a failed draft can be removed manually.
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to overwrite assets.' >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG" --generate-notes
+          gh release upload "$RELEASE_TAG" release/*
+          gh release edit "$RELEASE_TAG" --draft=false --latest

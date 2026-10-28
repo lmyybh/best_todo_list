@@ -4,11 +4,13 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import '../ui/home_shell.dart';
 import 'app_controller.dart';
 import 'app_theme.dart';
+import '../services/update_controller.dart';
 
 class TodoApp extends StatelessWidget {
-  const TodoApp({required this.controller, super.key});
+  const TodoApp({required this.controller, this.updates, super.key});
 
   final AppController controller;
+  final UpdateController? updates;
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +28,8 @@ class TodoApp extends StatelessWidget {
       themeMode: ThemeMode.light,
       home: ListenableBuilder(
         listenable: controller,
-        builder: (context, _) => HomeShell(controller: controller),
+        builder: (context, _) =>
+            HomeShell(controller: controller, updates: updates),
       ),
     );
   }

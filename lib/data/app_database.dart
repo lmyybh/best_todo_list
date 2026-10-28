@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../domain/deadline.dart';
@@ -91,6 +92,19 @@ class AppDatabase {
       await factory.getDatabasesPath(),
       'best_todo_list.sqlite',
     );
+    if (Platform.isMacOS) {
+      final databasePath = p.join(
+        (await getApplicationSupportDirectory()).path,
+        'data',
+        'best_todo_list.sqlite',
+      );
+      await migrateLegacyFiles(
+        legacyPath: legacyPath,
+        databasePath: databasePath,
+      );
+      await Directory(p.dirname(databasePath)).create(recursive: true);
+      return databasePath;
+    }
     if (!Platform.isWindows) return legacyPath;
 
     final localAppData = Platform.environment['LOCALAPPDATA'];

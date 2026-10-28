@@ -1,110 +1,91 @@
-# 桌面端手动更新开发计划
+# 桌面应用更新
 
-## 目标与范围
+## 用户体验
 
-为 macOS 和 Windows 桌面应用提供由用户主动触发的版本检查与更新能力。
+- 手动检查始终可用；自动检查默认关闭，可在“关于与更新”开启。
+- 开启后，启动 20 秒后及每 12 小时检查。没有新版或网络不可用时不弹窗。
+- 新版提示出现在侧栏底部。用户确认下载后，在应用内显示字节进度。
+- 弹窗关闭不取消下载，再次打开保留进度；可明确取消并重新下载。
+- 下载完成先校验，再显示“重启并更新”。不自动退出、不自动安装。
+- 已完成的下载跨启动保存，恢复及安装前都会重新验签和校验文件。
+- 安装失败时保留下载包，显示错误详情与手动下载入口。
+- 旧 Release 没有签名清单，或当前应用没有嵌入公钥时，保留 Windows
+  WinSparkle / macOS 浏览器下载作为兼容路径，不降级为执行未验证的安装包。
 
-本计划分三个阶段实施：
+## 更新信任链
 
-1. 应用内展示当前版本，手动检查 GitHub 正式 Release，发现新版后打开浏览器下载。
-2. 接入 Sparkle/WinSparkle，在应用内完成下载、校验、安装和重启。
-3. 通过 Git tag 和 CI 自动构建、签名、发布并生成更新源。
+正式构建通过 `--dart-define=UPDATE_PUBLIC_KEY=<base64 Ed25519 公钥>` 固定可信公钥。
+GitHub Release 提供 `update-windows.json` 和 `update-macos.json`，格式为
+`{"payload":"base64 原始 JSON 字节","signature":"base64 Ed25519 签名"}`。
+载荷包含 `version`、`platform`、`url`、`length`、`sha256`。
 
-不在当前范围内：移动端、强制更新、后台定时检查、灰度发布和数据格式降级。
+客户端首先验证载荷签名，再检查版本、平台和仓库内的固定版本 HTTPS 下载地址，
+最后流式下载并校验文件长度及 SHA-256。私钥只用于发布，不进入应用或仓库。
+签名错误、断流、超时、取消和文件被篡改都不能产生可安装状态。
 
-## 基本约定
+首次配置时，在仓库外创建签名种子：
 
-- `pubspec.yaml` 是应用版本的唯一来源，使用 `X.Y.Z` 格式。
-- Git tag 与 Release 使用 `v主版本.次版本.修订版本`，例如 `v0.2.0`。
-- 正式版本来自 `lmyybh/best_todo_list` 的最新非草稿、非预发布 GitHub Release。
-- 更新失败不得修改应用文件或用户 SQLite 数据。
+```bash
+dart run scripts/sign_update.dart --generate-key /secure/path/update-seed
+```
 
-## 第一阶段：检查并跳转下载
+命令输出公钥。将公钥配置为 GitHub Actions repository variable
+`UPDATE_PUBLIC_KEY`，种子文件的内容配置为 secret `UPDATE_SIGNING_SEED`。
+备份种子并限制读取权限。公钥一经发布应保持稳定；更换公钥需要另外设计可信迁移，
+不能直接覆盖变量后期望旧客户端接受新签名。
 
-### 功能
+## 安装与数据
 
-- 左侧导航栏提供“关于与更新”入口。
-- 弹窗展示当前版本和 build number。
-- 用户点击“检查更新”后请求 GitHub 最新正式 Release。
-- 最新版本较新时展示版本号和发布说明，并提供“前往下载”。
-- 已是最新版、尚无 Release、网络错误和响应异常均显示明确结果。
-- “前往下载”使用系统默认浏览器打开 Release 页面。
+Windows 使用当前用户 Inno Setup 安装器，不请求管理员权限。
+仅支持已安装在 `%LOCALAPPDATA%\Programs\BestTodoList` 的正式应用原地更新。
+退出前等待 SQLite 写入队列清空，保存失败会阻止重启。独立助手收到明确提交信号并
+等待旧进程退出后，执行静默安装，禁止重启系统、禁止强制关闭其他应用，然后启动应用。
+安装助手不能启动或无法完成退出准备时，当前应用继续运行。
 
-### 技术设计
+macOS 使用经过 Developer ID 签名、公证并装订票据的通用 ZIP。
+客户端再检查代码签名、Gatekeeper 评估、TeamIdentifier 和 bundle identifier。
+安装前先在同一磁盘准备替换包，助手等待旧进程退出后重命名替换并重新启动。
+替换或启动命令失败时尝试恢复旧包。之前的应用包保留为隐藏的 `.todo-update-*.app.backup`
+供手动恢复；不保证检测新进程启动之后的崩溃，不做数据库版本回退。
+应用所在目录不可写、应用仍在 DMG 中或签名不一致时拒绝自动替换，提供手动下载。
 
-- `package_info_plus`：读取当前应用版本。
-- `http`：访问 GitHub Releases API。
-- `url_launcher`：打开 HTTPS Release 页面。
-- `UpdateService`：隔离平台信息、网络请求和外部 URL 打开操作。
-- 版本标签只接受 `vX.Y.Z` 或 `X.Y.Z`，按三个数字段比较。
-- macOS DebugProfile 和 Release entitlement 允许出站网络访问。
+此发行方式使用 Developer ID，不使用 App Sandbox；沙盒应用不能自行替换应用包。
+macOS 数据库迁移到 `getApplicationSupportDirectory()/data/best_todo_list.sqlite`，
+迁移来源为此前 sqflite FFI 使用的当前启动目录下 `.dart_tool` 数据库，原文件保留。
+如果旧版本曾以不同工作目录启动，应先定位旧库并备份，再迁移到此固定路径。
+Windows 数据库继续独立存放在 `%LOCALAPPDATA%\BestTodoList\data`。
+更新缓存与自动检查设置位于应用支持目录下 `updates/`，不与任务数据库混用。
 
-### 验收标准
+已有编辑器在失焦时提交修改，更新弹窗会转移焦点；安装前再次等待写入队列。
+尚未提交的新任务草稿需要用户提交或放弃后再重启。
 
-- `v0.2.0` 相对 `0.1.0` 被识别为新版。
-- 相同或更低版本显示“已是最新版本”。
-- GitHub 返回 404 时显示“尚未发布可用版本”。
-- 网络或非法响应不会关闭弹窗或影响现有数据。
-- 发现新版后能够打开对应 GitHub Release 页面。
-- 格式化、静态分析和全部自动化测试通过。
+## 发布流程
 
-## 第二阶段：应用内安装
+`.github/workflows/desktop-release.yml` 在推送 `vX.Y.Z` tag 时执行，也支持选择该 tag 手动运行。
+`pubspec.yaml` 的版本必须和 tag 一致。Flutter 固定为 3.47.2。
 
-### 阶段 2A：Windows 安装器
+1. 静态分析与全部测试通过。
+2. Windows 和 macOS 分别构建、平台签名、生成并自验签更新清单。
+3. 两个平台都成功后创建 draft Release，上传完整产物，再公开并标为 latest。
+4. 已有 Release 的资产禁止覆盖。任一构建失败不发布新版，也不改变最新更新源。
 
-- 使用 Inno Setup 生成单文件 Setup EXE，不发布 ZIP。
-- 采用当前用户安装，固定路径为
-  `%LOCALAPPDATA%\Programs\BestTodoList`，不要求管理员权限。
-- 使用固定 AppId 支持原地覆盖升级，并创建开始菜单与卸载入口。
-- 安装器只管理程序目录；Windows 数据库独立保存在
-  `%LOCALAPPDATA%\BestTodoList\data\best_todo_list.sqlite`，不随覆盖升级或卸载删除。
-- 通过 `scripts/build_windows_installer.ps1` 自动读取应用版本、构建 Flutter
-  Release 并输出版本化安装器。
+除了更新签名种子，Actions 需要以下 secrets：
 
-### 功能
+| 平台 | Secrets |
+|---|---|
+| macOS | `MACOS_CERTIFICATE_P12`（P12 的 base64）、`MACOS_CERTIFICATE_PASSWORD`、`MACOS_SIGNING_IDENTITY`、`APPLE_ID`、`APPLE_TEAM_ID`、`APPLE_APP_PASSWORD` |
+| Windows | `WINDOWS_CERTIFICATE_PFX`（PFX 的 base64）、`WINDOWS_CERTIFICATE_PASSWORD`、`WINSPARKLE_DSA_PRIVATE_KEY`（兼容旧客户端的原 DSA PEM） |
 
-- 使用 `auto_updater` 对接 macOS Sparkle 和 Windows WinSparkle。
-- 用户确认后下载安装包、退出应用、安装并重新启动。
-- 保持手动检查，不启用启动检查或后台计划任务。
+Windows runner 需要 Windows SDK signtool、Inno Setup 6 和 OpenSSL。
+macOS runner 使用临时钥匙串导入证书，以 notarytool 公证，stapler 装订后重新打包并签署清单。
+`build_macos_update.sh`、`build_windows_update.ps1` 也可本地运行，参数见脚本。
+旧客户端的 `appcast-windows.xml` 继续生成，其安装包链接已固定到对应版本。
 
-### 发布产物
+## 发布验收
 
-- macOS：Developer ID 筿名、公证并带 Sparkle EdDSA 签名的 ZIP 或 PKG。
-- Windows：带 Authenticode 签名的 Inno Setup、MSI 或 NSIS 安装器。
-- 分平台提供 `appcast-macos.xml` 和 `appcast-windows.xml`，全部通过 HTTPS 发布。
+本地自动化覆盖验签、文件篡改、下载取消与重试、缓存恢复、进度、自动检查、弹窗关闭继续下载、
+安装准备失败及写入等待。它们不能代替真实系统上的签名安装和跨版本升级测试。
 
-### 安全要求
-
-- 更新归档必须通过 Sparkle/WinSparkle 签名验证。
-- 私钥只能保存在开发机安全存储或 CI Secret，不得提交到仓库。
-- App 内不得嵌入 GitHub Token。
-- 必须从上一个正式版本执行真实升级测试。
-
-### Windows 当前进度
-
-- 已接入 WinSparkle；发现新版后可在应用内触发下载和安装界面，且仅由用户手动触发。
-- DSA 公钥嵌入 Windows 可执行文件，私钥保存在仓库外。
-- `scripts/build_windows_appcast.ps1` 为 Setup EXE 生成签名并输出
-  `build/installer/appcast-windows.xml`：
-
-  ```powershell
-  powershell -ExecutionPolicy Bypass -File scripts/build_windows_appcast.ps1 `
-    -PrivateKeyPath D:\BestTodoListSecrets\winsparkle\dsa_priv.pem
-  ```
-
-- 待完成：将安装包和 appcast 上传到正式 GitHub Release，并从旧版本执行一次真实覆盖升级。
-- Authenticode 代码签名仍需单独购买或申请证书；WinSparkle 的 DSA 签名不能替代 Windows 发布者签名。
-
-## 第三阶段：发布自动化
-
-- 推送正式 Git tag 后分别在 macOS 和 Windows runner 构建。
-- 执行平台代码签名和 macOS 公证。
-- 创建 GitHub Release 并上传平台安装包。
-- 生成、签名并部署两个 appcast 文件。
-- 发布任务在任一步失败时不得更新 appcast，避免客户端发现不完整版本。
-
-## 回滚策略
-
-- GitHub Release 资产保持不可变；修复版本使用新的版本号重新发布。
-- appcast 在第二阶段保留最近若干正式版本，紧急情况下指向已验证的新修复版本。
-- 数据库迁移保持只向前且兼容旧数据；程序更新流程不直接操作数据库文件。
+发布前仍需实际配置证书与 secrets，从前一个正式版本在 Windows/macOS 各升级一次，
+验证已有任务、日期、备注保留，重启后版本变化，取消及离线重试正常。
+证书、Apple 公证账户、GitHub secrets 和真实跨版本验收不由本地代码变更自动完成。

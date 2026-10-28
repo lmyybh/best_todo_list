@@ -261,6 +261,11 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> prepareForUpdate() async {
+    await _workspace.flush();
+    if (_error != null) throw StateError('仍有未保存的更改，请先处理保存错误');
+  }
+
   Future<NodeWriteResult<T>> _write<T>(
     Future<NodeWriteResult<T>> operation, {
     void Function(T value)? onSuccess,

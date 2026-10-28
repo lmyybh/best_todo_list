@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_controller.dart';
 import '../app/app_theme.dart';
+import '../services/update_controller.dart';
 import 'adaptive/desktop_app_shell.dart';
 import 'events/event_view.dart';
 import 'events/event_board_view.dart';
@@ -11,9 +12,10 @@ import 'navigation/app_rail.dart';
 import 'timeline/calendar_timeline_view.dart';
 
 class HomeShell extends StatefulWidget {
-  const HomeShell({required this.controller, super.key});
+  const HomeShell({required this.controller, this.updates, super.key});
 
   final AppController controller;
+  final UpdateController? updates;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -75,7 +77,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             ),
           Expanded(
             child: DesktopAppShell(
-              navigation: AppRail(controller: controller),
+              navigation: AppRail(
+                controller: controller,
+                updates: widget.updates,
+              ),
               body: EventView(
                 controller: controller,
                 child: IndexedStack(

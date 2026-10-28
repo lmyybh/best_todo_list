@@ -159,6 +159,10 @@ scripts/build_macos_dmg.sh --skip-flutter-build
 
 ## 检查与测试
 
+应用内更新支持后台下载、验签、重启安装和可选的自动检查。正式发布需要固定的
+更新公钥及平台签名证书；配置、构建命令和 GitHub Actions secrets 见
+[桌面应用更新](docs/desktop-update-plan.md)。未配置公钥的开发构建使用兼容更新流程。
+
 ```sh
 dart format --output=none --set-exit-if-changed lib test
 flutter analyze
